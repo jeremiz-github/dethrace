@@ -7,7 +7,12 @@ target_include_directories(s3
 
 target_link_libraries(s3 PRIVATE brender harness compile_with_werror)
 
-if(NOT MSVC)
+if(DETHRACE_PLATFORM_N64)
+    target_link_libraries(s3 PUBLIC m)
+    add_compile_flags_if_supported(s3
+        -Wstrict-prototypes
+    )
+elseif(NOT MSVC)
     target_link_libraries(s3 PUBLIC pthread m)
     add_compile_flags_if_supported(s3
         -Wstrict-prototypes

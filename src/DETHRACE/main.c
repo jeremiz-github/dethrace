@@ -17,20 +17,28 @@ void BR_CALLBACK _BrBeginHook(void) {
     struct br_device* BR_EXPORT BrDrv1SoftPrimBegin(char* arguments);
     struct br_device* BR_EXPORT BrDrv1SoftRendBegin(char* arguments);
     struct br_device* BR_EXPORT BrDrv1VirtualFramebufferBegin(char* arguments);
+#ifndef DETHRACE_PLATFORM_N64
     struct br_device* BR_EXPORT BrDrv1GLBegin(char* arguments);
+#endif
 
 #if _MSC_VER != 1020
     BrDevAddStatic(NULL, BrDrv1SoftPrimBegin, NULL);
     BrDevAddStatic(NULL, BrDrv1SoftRendBegin, NULL);
     BrDevAddStatic(NULL, BrDrv1VirtualFramebufferBegin, NULL);
+#ifndef DETHRACE_PLATFORM_N64
     BrDevAddStatic(NULL, BrDrv1GLBegin, NULL);
+#endif
 #endif
 }
 
 void BR_CALLBACK _BrEndHook(void) {
 }
 
+#ifdef DETHRACE_PLATFORM_N64
+static int dethrace_main(int argc, char* argv[]) {
+#else
 int main(int argc, char* argv[]) {
+#endif
     int result;
 
 #ifdef _WIN32
@@ -64,3 +72,18 @@ int main(int argc, char* argv[]) {
 
     return result;
 }
+
+#ifdef DETHRACE_PLATFORM_N64
+#include <libdragon.h>
+
+// libdragon entry point: set up logging and the ROM filesystem, then hand over to the game.
+int main(void) {
+    static char* argv[] = { "dethrace", NULL };
+
+    debug_init_isviewer();
+    debug_init_usblog();
+    dfs_init(DFS_DEFAULT_LOCATION);
+
+    return dethrace_main(1, argv);
+}
+#endif

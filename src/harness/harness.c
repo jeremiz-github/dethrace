@@ -24,8 +24,13 @@ extern void Harness_Platform_Init(tHarness_platform* platform);
 extern const tPlatform_bootstrap SDL1_bootstrap;
 extern const tPlatform_bootstrap SDL2_bootstrap;
 extern const tPlatform_bootstrap SDL3_bootstrap;
+extern const tPlatform_bootstrap N64_bootstrap;
 
 static const tPlatform_bootstrap* platform_bootstraps[] = {
+#if defined(DETHRACE_PLATFORM_N64)
+    &N64_bootstrap,
+#define HAS_PLATFORM_BOOTSTRAP
+#endif
 #if defined(DETHRACE_PLATFORM_SDL3)
     &SDL3_bootstrap,
 #define HAS_PLATFORM_BOOTSTRAP

@@ -71,6 +71,10 @@ endif()
 
 target_compile_definitions(dethrace PRIVATE INSIDE_DETHRACE)
 
+if(DETHRACE_PLATFORM_N64)
+    target_compile_definitions(dethrace PRIVATE DETHRACE_PLATFORM_N64)
+endif()
+
 if(DETHRACE_FIX_BUGS)
     target_compile_definitions(dethrace PRIVATE DETHRACE_FIX_BUGS)
 endif()
@@ -208,6 +212,9 @@ target_sources(dethrace PRIVATE
 
 if(MSVC_42_FOR_RECCMP)
     target_sources(dethrace PRIVATE pc-win95/win95net.c)
+elseif(DETHRACE_PLATFORM_N64)
+    # no sockets on the N64: networking stubs
+    target_sources(dethrace PRIVATE pc-all/nonet.c)
 else()
     # dethrace-added cross platform sys and network implementation
     target_sources(dethrace PRIVATE pc-all/allnet.c)
