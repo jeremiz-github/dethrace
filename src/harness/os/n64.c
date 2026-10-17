@@ -234,6 +234,11 @@ void OS_N64_InitFilesystem(void) {
     int have_sd;
 
     dfs_init(DFS_DEFAULT_LOCATION); // optional: only used as a fallback data location
+    // debug_init_sdfs() calls cart_init() once and remembers a failure forever. On the SummerCart64 that
+    // first call fails (after the USB debug init), while later ones succeed: warm it up ourselves first.
+    for (int warm = 0; warm < 10 && cart_init() < 0; warm++) {
+        wait_ms(50);
+    }
     have_sd = debug_init_sdfs("sd:/", -1);
     for (int retry = 0; !have_sd && retry < 3; retry++) {
         wait_ms(300); // the cartridge's SD interface may need a moment after boot
