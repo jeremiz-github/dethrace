@@ -177,6 +177,18 @@ static int n64_find_data_root(const char* const* roots, size_t count) {
 extern int __real_cart_card_init(void);
 int gN64_card_init_attempts;
 
+// Every cart_init() call made from libdragon (and from us) goes through here so the diagnostics can show them.
+extern int __real_cart_init(void);
+static int gN64_cart_init_calls, gN64_cart_init_last_rc = 12345, gN64_calls_before_mount, gN64_calls_after_mount;
+
+int __wrap_cart_init(void) {
+    int rc = __real_cart_init();
+
+    gN64_cart_init_calls++;
+    gN64_cart_init_last_rc = rc;
+    return rc;
+}
+
 int __wrap_cart_card_init(void) {
     int rc = -1;
 
@@ -205,6 +217,7 @@ static void n64_sd_diagnostics(void) {
         rc_read = cart_card_rd_dram(sector, 0, 1);
     }
     n += snprintf(msg + n, sizeof(msg) - n, "  boot console type was: %d\n", gN64_boot_consoletype);
+    n += snprintf(msg + n, sizeof(msg) - n, "  cart_init calls: %d last rc: %d type: %d\n  calls around 1st mount: %d -> %d\n", gN64_cart_init_calls, gN64_cart_init_last_rc, cart_type, gN64_calls_before_mount, gN64_calls_after_mount);
     n += snprintf(msg + n, sizeof(msg) - n, "  bbplayer now: %d\n", (int)sys_bbplayer());
     n += snprintf(msg + n, sizeof(msg) - n, "  warm-up tries: %d rc: %d\n", gN64_warm_tries, gN64_warm_rc);
     n += snprintf(msg + n, sizeof(msg) - n, "  cart_init: %d  cart: %s\n", rc_init,
@@ -259,7 +272,9 @@ void OS_N64_InitFilesystem(void) {
         }
         wait_ms(50);
     }
+    gN64_calls_before_mount = gN64_cart_init_calls;
     have_sd = debug_init_sdfs("sd:/", -1);
+    gN64_calls_after_mount = gN64_cart_init_calls;
     for (int retry = 0; !have_sd && retry < 3; retry++) {
         wait_ms(300); // the cartridge's SD interface may need a moment after boot
         have_sd = debug_init_sdfs("sd:/", -1);
