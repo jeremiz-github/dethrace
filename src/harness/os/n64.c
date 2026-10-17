@@ -169,6 +169,25 @@ static int n64_find_data_root(const char* const* roots, size_t count) {
     return 0;
 }
 
+// libdragon's SD driver calls cart_card_init() when mounting. On the user's SummerCart64 the first
+// calls fail (FR_NOT_READY) while a cart_init() + cart_card_init() sequence succeeds, so retry that way.
+extern int __real_cart_card_init(void);
+int gN64_card_init_attempts;
+
+int __wrap_cart_card_init(void) {
+    int rc = -1;
+
+    for (gN64_card_init_attempts = 1; gN64_card_init_attempts <= 6; gN64_card_init_attempts++) {
+        rc = __real_cart_card_init();
+        if (rc == 0) {
+            return 0;
+        }
+        wait_ms(100);
+        cart_init(); // re-establish cartridge access (SC64: unlock registers) then try again
+    }
+    return rc;
+}
+
 // Raw probe of the cartridge's SD interface, to tell why the FAT mount failed.
 static void n64_sd_diagnostics(void) {
     static uint8_t sector[512] __attribute__((aligned(16)));
@@ -196,6 +215,7 @@ static void n64_sd_diagnostics(void) {
         uint32_t start = sector[454] | (sector[455] << 8) | (sector[456] << 16) | ((uint32_t)sector[457] << 24);
         int rc_vbr = cart_card_rd_dram(sector, start, 1);
         FRESULT fr = f_mount(&probe_fs, "", 1);
+        n += snprintf(msg + n, sizeof(msg) - n, "  card init attempts: %d\n", gN64_card_init_attempts);
         n += snprintf(msg + n, sizeof(msg) - n, "  vbr read: %d sig: %02X%02X fs: %.8s\n  f_mount: %d\n",
             rc_vbr, sector[511], sector[510], (char*)sector + 82, (int)fr);
     }
