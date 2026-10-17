@@ -12,6 +12,7 @@
 
 #include <libdragon.h>
 
+#include <malloc.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -129,32 +130,69 @@ static void N64_Harness_PaletteChanged(br_colour entries[256]) {
     }
 }
 
+// Once per ~2 s, log the frame rate and heap usage (visible through the SC64 USB log / ISViewer).
+static void n64_report_stats(void) {
+    static unsigned long last_report_ms = 0;
+    static unsigned frames = 0;
+    unsigned long now = get_ticks_ms();
+
+    frames++;
+    if (last_report_ms == 0) {
+        last_report_ms = now;
+        frames = 0;
+    } else if (now - last_report_ms >= 2000) {
+        struct mallinfo mi = mallinfo();
+        debugf("dethrace: %.1f fps, heap in use %d KB of %d KB RAM\n",
+            frames * 1000.0f / (float)(now - last_report_ms),
+            (int)(mi.uordblks / 1024), (int)(get_memory_size() / 1024));
+        last_report_ms = now;
+        frames = 0;
+    }
+}
+
 static void N64_Harness_Swap(br_pixelmap* back_buffer) {
     int x, y;
-    int copy_w, copy_h;
+    int out_w, out_h;
+    int step;
     int off_x, off_y;
     surface_t* disp;
-    uint8_t* src_row;
-    uint16_t* dst_row;
 
     N64_Harness_ProcessWindowMessages();
 
     last_screen_src = back_buffer;
     disp = display_get();
 
-    copy_w = back_buffer->width < N64_SCREEN_W ? back_buffer->width : N64_SCREEN_W;
-    copy_h = back_buffer->height < N64_SCREEN_H ? back_buffer->height : N64_SCREEN_H;
-    off_x = (N64_SCREEN_W - copy_w) / 2;
-    off_y = (N64_SCREEN_H - copy_h) / 2;
+    // 320x200 (low-res, the default here) is copied 1:1; 640x480 is decimated 2:1.
+    step = back_buffer->width >= 2 * N64_SCREEN_W ? 2 : 1;
+    out_w = back_buffer->width / step;
+    out_h = back_buffer->height / step;
+    if (out_w > N64_SCREEN_W) {
+        out_w = N64_SCREEN_W;
+    }
+    if (out_h > N64_SCREEN_H) {
+        out_h = N64_SCREEN_H;
+    }
+    out_w &= ~1; // two pixels per 32-bit store
+    off_x = ((N64_SCREEN_W - out_w) / 2) & ~1;
+    off_y = (N64_SCREEN_H - out_h) / 2;
 
-    for (y = 0; y < copy_h; y++) {
-        src_row = (uint8_t*)back_buffer->pixels + (size_t)y * back_buffer->row_bytes;
-        dst_row = (uint16_t*)((uint8_t*)disp->buffer + (size_t)(y + off_y) * disp->stride) + off_x;
-        for (x = 0; x < copy_w; x++) {
-            dst_row[x] = converted_palette[src_row[x]];
+    // The display buffer is uncached RDRAM: write two RGBA5551 pixels per 32-bit store
+    for (y = 0; y < out_h; y++) {
+        const uint8_t* src = (const uint8_t*)back_buffer->pixels + (size_t)(y * step) * back_buffer->row_bytes;
+        uint32_t* dst = (uint32_t*)((uint8_t*)disp->buffer + (size_t)(y + off_y) * disp->stride) + (off_x >> 1);
+
+        if (step == 1) {
+            for (x = 0; x < out_w; x += 2) {
+                *dst++ = ((uint32_t)converted_palette[src[x]] << 16) | converted_palette[src[x + 1]];
+            }
+        } else {
+            for (x = 0; x < out_w; x += 2) {
+                *dst++ = ((uint32_t)converted_palette[src[2 * x]] << 16) | converted_palette[src[2 * x + 2]];
+            }
         }
     }
     display_show(disp);
+    n64_report_stats();
 }
 
 static void N64_Harness_GetViewport(int* x, int* y, float* width_multipler, float* height_multiplier) {

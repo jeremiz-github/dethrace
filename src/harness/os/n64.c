@@ -1,12 +1,225 @@
-// OS layer for libdragon / Nintendo 64.
-// Game data is expected inside the ROM's DFS filesystem, mounted as "rom:/".
+// OS layer for libdragon / Nintendo 64 (SummerCart64 and other SD-capable flashcarts).
+//
+// The Carmageddon game data is read from the cartridge's SD card, mounted as "sd:/".
+// The game expects a "current directory" it can use relative paths against, but
+// libdragon has no chdir()/getcwd(). So we keep our own cwd string and resolve every
+// relative path through it. newlib's fopen()/remove() end up calling open()/unlink(),
+// and the game calls stat()/mkdir() directly: all four are intercepted at link time
+// with `-Wl,--wrap=open,stat,unlink,mkdir` (see cmake/n64-libdragon-toolchain.cmake).
 #include "harness/os.h"
 
 #include <libdragon.h>
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+
+#define N64_PATH_MAX 256
+
+// Where the game's DATA folder may live on the SD card, in order of preference.
+static const char* const kDataRoots[] = {
+    "sd:/carmageddon",
+    "sd:/carma",
+    "sd:/dethrace",
+    "sd:/",
+};
+
+static char gN64_cwd[N64_PATH_MAX] = "rom:/";
+
+// ---------------------------------------------------------------------------
+// Path resolution
+// ---------------------------------------------------------------------------
+
+// Builds an absolute libdragon path ("prefix:/dir/file") from `in`, relative to the cwd.
+static void n64_resolve(const char* in, char* out, size_t out_size) {
+    const char* slash;
+    const char* colon;
+    size_t n;
+
+    if (in == NULL) {
+        out[0] = '\0';
+        return;
+    }
+    while (in[0] == '.' && in[1] == '/') {
+        in += 2;
+    }
+
+    colon = strchr(in, ':');
+    slash = strchr(in, '/');
+    if (colon != NULL && (slash == NULL || colon < slash)) {
+        // already has a filesystem prefix ("sd:/...", "rom:/...")
+        snprintf(out, out_size, "%s", in);
+    } else if (in[0] == '/') {
+        // absolute on the current drive
+        colon = strchr(gN64_cwd, ':');
+        n = colon != NULL ? (size_t)(colon - gN64_cwd + 1) : 0;
+        snprintf(out, out_size, "%.*s%s", (int)n, gN64_cwd, in);
+    } else {
+        n = strlen(gN64_cwd);
+        snprintf(out, out_size, "%s%s%s", gN64_cwd, (n > 0 && gN64_cwd[n - 1] == '/') ? "" : "/", in);
+    }
+
+    for (n = 0; out[n] != '\0'; n++) {
+        if (out[n] == '\\') {
+            out[n] = '/';
+        }
+    }
+}
+
+// Linker wrappers (see --wrap in the toolchain file). The __real_* symbols are libdragon's own.
+extern int __real_open(const char* path, int flags, ...);
+extern int __real_stat(const char* path, struct stat* st);
+extern int __real_unlink(char* path);
+extern int __real_mkdir(const char* path, mode_t mode);
+
+int __wrap_open(const char* path, int flags, ...) {
+    char full[N64_PATH_MAX];
+    int mode;
+    va_list ap;
+
+    va_start(ap, flags);
+    mode = va_arg(ap, int); // libdragon ignores it; only read to forward it
+    va_end(ap);
+
+    n64_resolve(path, full, sizeof(full));
+    return __real_open(full, flags, mode);
+}
+
+int __wrap_stat(const char* path, struct stat* st) {
+    char full[N64_PATH_MAX];
+
+    n64_resolve(path, full, sizeof(full));
+    return __real_stat(full, st);
+}
+
+int __wrap_unlink(char* path) {
+    char full[N64_PATH_MAX];
+
+    n64_resolve(path, full, sizeof(full));
+    return __real_unlink(full);
+}
+
+int __wrap_mkdir(const char* path, mode_t mode) {
+    char full[N64_PATH_MAX];
+
+    n64_resolve(path, full, sizeof(full));
+    return __real_mkdir(full, mode);
+}
+
+char* getcwd(char* buf, size_t size) {
+    if (buf == NULL || size <= strlen(gN64_cwd)) {
+        return NULL;
+    }
+    strcpy(buf, gN64_cwd);
+    return buf;
+}
+
+int chdir(const char* path) {
+    char full[N64_PATH_MAX];
+    size_t n;
+
+    n64_resolve(path, full, sizeof(full));
+    n = strlen(full);
+    // keep "sd:/" as is, strip any other trailing slash
+    while (n > 1 && full[n - 1] == '/' && full[n - 2] != ':') {
+        full[--n] = '\0';
+    }
+    snprintf(gN64_cwd, sizeof(gN64_cwd), "%s", full);
+    return 0;
+}
+
+int access(const char* path, int mode) {
+    struct stat st;
+
+    (void)mode;
+    return stat(path, &st) == 0 ? 0 : -1;
+}
+
+// ---------------------------------------------------------------------------
+// Startup helpers (called from main() in src/DETHRACE/main.c)
+// ---------------------------------------------------------------------------
+
+// Shows a message on a text console and never returns.
+static void n64_fatal_screen(const char* title, const char* message) {
+    console_init();
+    console_set_debug(false);
+    printf("\n  %s\n\n%s\n", title, message);
+    console_render();
+    for (;;) {
+    }
+}
+
+static int n64_find_data_root(const char* const* roots, size_t count) {
+    size_t i;
+    char probe[N64_PATH_MAX];
+    struct stat st;
+
+    for (i = 0; i < count; i++) {
+        snprintf(probe, sizeof(probe), "%s%sDATA/GENERAL.TXT", roots[i],
+            roots[i][strlen(roots[i]) - 1] == '/' ? "" : "/");
+        if (stat(probe, &st) == 0) {
+            snprintf(gN64_cwd, sizeof(gN64_cwd), "%s", roots[i]);
+            return 1;
+        }
+    }
+    return 0;
+}
+
+// Mounts the SD card (and the ROM's own filesystem), and picks the folder containing the
+// game's DATA directory as the current directory. Shows an explanation and stops if there is none.
+void OS_N64_InitFilesystem(void) {
+    static const char* const kRomRoot[] = { "rom:/" };
+    int have_sd;
+
+    dfs_init(DFS_DEFAULT_LOCATION); // optional: only used as a fallback data location
+    have_sd = debug_init_sdfs("sd:/", -1);
+
+    if (have_sd && n64_find_data_root(kDataRoots, sizeof(kDataRoots) / sizeof(kDataRoots[0]))) {
+        return;
+    }
+    if (n64_find_data_root(kRomRoot, 1)) {
+        return;
+    }
+
+    if (!have_sd) {
+        n64_fatal_screen("SD card not found",
+            "  Could not mount the SD card.\n"
+            "  It must be formatted FAT32 (or exFAT) and\n"
+            "  the cartridge must support SD access\n"
+            "  (SummerCart64: enable it in the menu).");
+    }
+    n64_fatal_screen("Carmageddon data not found",
+        "  Copy your game's DATA folder to the SD card\n"
+        "  so that this file exists:\n\n"
+        "    sd:/carmageddon/DATA/GENERAL.TXT\n\n"
+        "  (the folder name is case-insensitive.)");
+}
+
+// Reads the optional ARGS.TXT (command-line options, one line) from the game directory.
+// Returns the number of bytes read (0 if the file is missing or empty); `buffer` is always NUL-terminated.
+size_t OS_N64_ReadArgsFile(char* buffer, size_t size) {
+    FILE* f;
+    size_t n;
+
+    if (size == 0) {
+        return 0;
+    }
+    buffer[0] = '\0';
+    f = fopen("ARGS.TXT", "rb");
+    if (f == NULL) {
+        return 0;
+    }
+    n = fread(buffer, 1, size - 1, f);
+    buffer[n] = '\0';
+    fclose(f);
+    return n;
+}
+
+// ---------------------------------------------------------------------------
+// harness/os.h implementation
+// ---------------------------------------------------------------------------
 
 void OS_InstallSignalHandler(char* program_name) {
 }
@@ -14,15 +227,46 @@ void OS_InstallSignalHandler(char* program_name) {
 void OS_RemoveSignalHandler(void) {
 }
 
-char* OS_GetFirstFileInDirectory(char* path) {
+static dir_t gDir;
+static char gDirPath[N64_PATH_MAX];
+static int gDirActive;
+
+// Returns the name of the current entry if it is a regular file, advancing until one is found.
+static char* n64_next_regular_file(int advance_first) {
+    int r = 0;
+
+    if (advance_first) {
+        r = dir_findnext(gDirPath, &gDir);
+    }
+    while (r == 0) {
+        if (gDir.d_type == DT_REG) {
+            return gDir.d_name;
+        }
+        r = dir_findnext(gDirPath, &gDir);
+    }
+    gDirActive = 0;
     return NULL;
+}
+
+char* OS_GetFirstFileInDirectory(char* path) {
+    n64_resolve(path, gDirPath, sizeof(gDirPath));
+    if (dir_findfirst(gDirPath, &gDir) != 0) {
+        gDirActive = 0;
+        return NULL;
+    }
+    gDirActive = 1;
+    return n64_next_regular_file(0);
 }
 
 char* OS_GetNextFileInDirectory(void) {
-    return NULL;
+    if (!gDirActive) {
+        return NULL;
+    }
+    return n64_next_regular_file(1);
 }
 
 FILE* OS_fopen(const char* pathname, const char* mode) {
+    // FAT lookups are case-insensitive, so no extra case-folding is needed
     return fopen(pathname, mode);
 }
 
@@ -54,12 +298,13 @@ char* OS_Basename(const char* path) {
 }
 
 char* OS_GetWorkingDirectory(char* argv0) {
-    return strdup("rom:/");
+    return strdup(gN64_cwd);
 }
 
 int OS_GetPrefPath(char* dest, char* name) {
-    // No writable pref directory on a bare cartridge
-    return 1;
+    // dethrace.ini and saved files live next to DATA, on the SD card
+    snprintf(dest, N64_PATH_MAX, "%s%s", gN64_cwd, gN64_cwd[strlen(gN64_cwd) - 1] == '/' ? "" : "/");
+    return 0;
 }
 
 int OS_GetAdapterAddress(char* name, void* pSockaddr_in) {
@@ -83,34 +328,4 @@ int OS_SetSocketNonBlocking(int socket) {
 
 int OS_CloseSocket(int socket) {
     return 1;
-}
-
-// ---------------------------------------------------------------------------
-// POSIX bits the game calls directly but libdragon's newlib doesn't provide.
-// ---------------------------------------------------------------------------
-#include <sys/stat.h>
-
-static char gN64_cwd[256] = "rom:/";
-
-char* getcwd(char* buf, size_t size) {
-    if (buf == NULL || size <= strlen(gN64_cwd)) {
-        return NULL;
-    }
-    strcpy(buf, gN64_cwd);
-    return buf;
-}
-
-int chdir(const char* path) {
-    if (path == NULL || strlen(path) >= sizeof(gN64_cwd)) {
-        return -1;
-    }
-    strcpy(gN64_cwd, path);
-    return 0;
-}
-
-int access(const char* path, int mode) {
-    struct stat st;
-
-    (void)mode;
-    return stat(path, &st) == 0 ? 0 : -1;
 }
