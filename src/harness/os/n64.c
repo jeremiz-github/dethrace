@@ -30,6 +30,7 @@ static const char* const kDataRoots[] = {
 };
 
 static int gN64_boot_consoletype;
+static int gN64_warm_tries, gN64_warm_rc;
 static char gN64_cwd[N64_PATH_MAX] = "rom:/";
 
 // ---------------------------------------------------------------------------
@@ -204,6 +205,8 @@ static void n64_sd_diagnostics(void) {
         rc_read = cart_card_rd_dram(sector, 0, 1);
     }
     n += snprintf(msg + n, sizeof(msg) - n, "  boot console type was: %d\n", gN64_boot_consoletype);
+    n += snprintf(msg + n, sizeof(msg) - n, "  bbplayer now: %d\n", (int)sys_bbplayer());
+    n += snprintf(msg + n, sizeof(msg) - n, "  warm-up tries: %d rc: %d\n", gN64_warm_tries, gN64_warm_rc);
     n += snprintf(msg + n, sizeof(msg) - n, "  cart_init: %d  cart: %s\n", rc_init,
         (cart_type >= 0 && cart_type <= 3) ? kCartNames[cart_type] : "none detected");
     n += snprintf(msg + n, sizeof(msg) - n, "  card_init: %d  read sector 0: %d\n", rc_card, rc_read);
@@ -249,7 +252,11 @@ void OS_N64_InitFilesystem(void) {
     dfs_init(DFS_DEFAULT_LOCATION); // optional: only used as a fallback data location
     // debug_init_sdfs() calls cart_init() once and remembers a failure forever. On the SummerCart64 that
     // first call fails (after the USB debug init), while later ones succeed: warm it up ourselves first.
-    for (int warm = 0; warm < 10 && cart_init() < 0; warm++) {
+    for (gN64_warm_tries = 1; gN64_warm_tries <= 120; gN64_warm_tries++) {
+        gN64_warm_rc = cart_init();
+        if (gN64_warm_rc >= 0) {
+            break;
+        }
         wait_ms(50);
     }
     have_sd = debug_init_sdfs("sd:/", -1);
