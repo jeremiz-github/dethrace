@@ -29,6 +29,7 @@ static const char* const kDataRoots[] = {
     "sd:/",
 };
 
+static int gN64_boot_consoletype;
 static char gN64_cwd[N64_PATH_MAX] = "rom:/";
 
 // ---------------------------------------------------------------------------
@@ -202,6 +203,7 @@ static void n64_sd_diagnostics(void) {
         memset(sector, 0, sizeof(sector));
         rc_read = cart_card_rd_dram(sector, 0, 1);
     }
+    n += snprintf(msg + n, sizeof(msg) - n, "  boot console type was: %d\n", gN64_boot_consoletype);
     n += snprintf(msg + n, sizeof(msg) - n, "  cart_init: %d  cart: %s\n", rc_init,
         (cart_type >= 0 && cart_type <= 3) ? kCartNames[cart_type] : "none detected");
     n += snprintf(msg + n, sizeof(msg) - n, "  card_init: %d  read sector 0: %d\n", rc_card, rc_read);
@@ -225,6 +227,17 @@ static void n64_sd_diagnostics(void) {
             rc_vbr, sector[511], sector[510], (char*)sector + 82, (int)fr);
     }
     n64_fatal_screen("SD card not mounted", msg);
+}
+
+// libdragon copies the "console type" byte left by IPL3 into __boot_consoletype and refuses to use the
+// cartridge (USB log, SD card) when it is non-zero (iQue player). Seen non-zero on a real N64 + SummerCart64,
+// so decide from the hardware instead (iQue: MI version 0xB_). Must run before any debug_init_*().
+void OS_N64_FixConsoleType(void) {
+    extern int __boot_consoletype;
+    gN64_boot_consoletype = __boot_consoletype;
+    if ((*(volatile uint32_t*)0xA4300004 & 0xF0) != 0xB0) {
+        __boot_consoletype = 0;
+    }
 }
 
 // Mounts the SD card (and the ROM's own filesystem), and picks the folder containing the

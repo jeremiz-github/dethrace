@@ -78,6 +78,7 @@ int main(int argc, char* argv[]) {
 #include <string.h>
 
 extern void OS_N64_InitFilesystem(void);
+extern void OS_N64_FixConsoleType(void);
 extern size_t OS_N64_ReadArgsFile(char* buffer, size_t size);
 
 // Defaults chosen to fit the N64's 4/8 MB of RAM and its CPU:
@@ -98,6 +99,7 @@ int main(void) {
     char* tok;
     size_t n;
 
+    OS_N64_FixConsoleType();
     debug_init_isviewer();
     debug_init_usblog();
     OS_N64_InitFilesystem();
