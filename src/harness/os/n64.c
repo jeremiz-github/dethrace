@@ -214,7 +214,11 @@ static void n64_sd_diagnostics(void) {
         static FATFS probe_fs;
         uint32_t start = sector[454] | (sector[455] << 8) | (sector[456] << 16) | ((uint32_t)sector[457] << 24);
         int rc_vbr = cart_card_rd_dram(sector, start, 1);
+        int di = disk_initialize(0);
+        int ds = disk_status(0);
+        int dr = disk_read(0, sector, start, 1);
         FRESULT fr = f_mount(&probe_fs, "", 1);
+        n += snprintf(msg + n, sizeof(msg) - n, "  disk_init: %d status: %d read: %d\n", di, ds, dr);
         n += snprintf(msg + n, sizeof(msg) - n, "  card init attempts: %d\n", gN64_card_init_attempts);
         n += snprintf(msg + n, sizeof(msg) - n, "  vbr read: %d sig: %02X%02X fs: %.8s\n  f_mount: %d\n",
             rc_vbr, sector[511], sector[510], (char*)sector + 82, (int)fr);
