@@ -11,6 +11,7 @@
 #include <libdragon.h>
 #include <libcart/cart.h>
 #include <fatfs/ff.h>
+#include <fatfs/diskio.h>
 
 #include <stdarg.h>
 #include <stdio.h>
