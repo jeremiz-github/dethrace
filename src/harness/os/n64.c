@@ -10,6 +10,7 @@
 
 #include <libdragon.h>
 #include <libcart/cart.h>
+#include <fatfs/ff.h>
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -190,6 +191,14 @@ static void n64_sd_diagnostics(void) {
         n += snprintf(msg + n, sizeof(msg) - n, "  part1 type: %02X  start: %lu\n", sector[450],
             (unsigned long)(sector[454] | (sector[455] << 8) | (sector[456] << 16) | ((unsigned long)sector[457] << 24)));
     }
+    if (rc_read == 0) {
+        static FATFS probe_fs;
+        uint32_t start = sector[454] | (sector[455] << 8) | (sector[456] << 16) | ((uint32_t)sector[457] << 24);
+        int rc_vbr = cart_card_rd_dram(sector, start, 1);
+        FRESULT fr = f_mount(&probe_fs, "", 1);
+        n += snprintf(msg + n, sizeof(msg) - n, "  vbr read: %d sig: %02X%02X fs: %.8s\n  f_mount: %d\n",
+            rc_vbr, sector[511], sector[510], (char*)sector + 82, (int)fr);
+    }
     n64_fatal_screen("SD card not mounted", msg);
 }
 
@@ -201,6 +210,10 @@ void OS_N64_InitFilesystem(void) {
 
     dfs_init(DFS_DEFAULT_LOCATION); // optional: only used as a fallback data location
     have_sd = debug_init_sdfs("sd:/", -1);
+    for (int retry = 0; !have_sd && retry < 3; retry++) {
+        wait_ms(300); // the cartridge's SD interface may need a moment after boot
+        have_sd = debug_init_sdfs("sd:/", -1);
+    }
 
     if (have_sd && n64_find_data_root(kDataRoots, sizeof(kDataRoots) / sizeof(kDataRoots[0]))) {
         return;
