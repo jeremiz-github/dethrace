@@ -9,6 +9,7 @@
 #include "harness/os.h"
 
 #include <libdragon.h>
+#include <libcart/cart.h>
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -167,6 +168,31 @@ static int n64_find_data_root(const char* const* roots, size_t count) {
     return 0;
 }
 
+// Raw probe of the cartridge's SD interface, to tell why the FAT mount failed.
+static void n64_sd_diagnostics(void) {
+    static uint8_t sector[512] __attribute__((aligned(16)));
+    static const char* const kCartNames[] = { "64drive", "EverDrive X", "EverDrive V1-3", "SummerCart64" };
+    char msg[512];
+    int n = 0, rc_init, rc_card, rc_read = -99;
+
+    rc_init = cart_init();
+    rc_card = cart_card_init();
+    if (rc_card == 0) {
+        memset(sector, 0, sizeof(sector));
+        rc_read = cart_card_rd_dram(sector, 0, 1);
+    }
+    n += snprintf(msg + n, sizeof(msg) - n, "  cart_init: %d  cart: %s\n", rc_init,
+        (cart_type >= 0 && cart_type <= 3) ? kCartNames[cart_type] : "none detected");
+    n += snprintf(msg + n, sizeof(msg) - n, "  card_init: %d  read sector 0: %d\n", rc_card, rc_read);
+    if (rc_read == 0) {
+        n += snprintf(msg + n, sizeof(msg) - n, "  boot sig: %02X%02X  jump: %02X  fs: %.5s %.8s\n",
+            sector[511], sector[510], sector[0], (char*)sector + 3, (char*)sector + 82);
+        n += snprintf(msg + n, sizeof(msg) - n, "  part1 type: %02X  start: %lu\n", sector[450],
+            (unsigned long)(sector[454] | (sector[455] << 8) | (sector[456] << 16) | ((unsigned long)sector[457] << 24)));
+    }
+    n64_fatal_screen("SD card not mounted", msg);
+}
+
 // Mounts the SD card (and the ROM's own filesystem), and picks the folder containing the
 // game's DATA directory as the current directory. Shows an explanation and stops if there is none.
 void OS_N64_InitFilesystem(void) {
@@ -184,11 +210,7 @@ void OS_N64_InitFilesystem(void) {
     }
 
     if (!have_sd) {
-        n64_fatal_screen("SD card not found",
-            "  Could not mount the SD card.\n"
-            "  It must be formatted FAT32 (or exFAT) and\n"
-            "  the cartridge must support SD access\n"
-            "  (SummerCart64: enable it in the menu).");
+        n64_sd_diagnostics();
     }
     n64_fatal_screen("Carmageddon data not found",
         "  Copy your game's DATA folder to the SD card\n"
