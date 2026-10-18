@@ -10,6 +10,15 @@
 
 #include <libdragon.h>
 #include <libcart/cart.h>
+
+// libdragon's debug.h turns debug_init_*() into a literal `false` when NDEBUG is defined (our Release
+// build), so the SD card would never be mounted. The real functions are always in libdragon.a: use them.
+#undef debug_init_sdfs
+#undef debug_init_usblog
+#undef debug_init_emulog
+bool debug_init_sdfs(const char* prefix, int npart);
+bool debug_init_usblog(void);
+bool debug_init_emulog(void);
 #include <fatfs/ff.h>
 #include <fatfs/diskio.h>
 
@@ -248,6 +257,11 @@ static void n64_sd_diagnostics(void) {
 // libdragon copies the "console type" byte left by IPL3 into __boot_consoletype and refuses to use the
 // cartridge (USB log, SD card) when it is non-zero (iQue player). Seen non-zero on a real N64 + SummerCart64,
 // so decide from the hardware instead (iQue: MI version 0xB_). Must run before any debug_init_*().
+void OS_N64_InitDebugLogs(void) {
+    debug_init_emulog();
+    debug_init_usblog();
+}
+
 void OS_N64_FixConsoleType(void) {
     extern int __boot_consoletype;
     gN64_boot_consoletype = __boot_consoletype;
