@@ -13,6 +13,7 @@
 #include <libdragon.h>
 
 extern void dr_dprintf(char* fmt_string, ...);
+extern volatile int gN64_fpu_fixups;
 
 #include <malloc.h>
 #include <stdio.h>
@@ -47,10 +48,17 @@ static void set_key(int scancode, int down) {
     }
 }
 
+static int gPad_stick_x, gPad_stick_y;
+static unsigned gPad_buttons;
+
 static void N64_Harness_ProcessWindowMessages(void) {
     joypad_poll();
     joypad_inputs_t in = joypad_get_inputs(JOYPAD_PORT_1);
     joypad_buttons_t b = in.btn;
+
+    gPad_stick_x = in.stick_x;
+    gPad_stick_y = in.stick_y;
+    gPad_buttons = b.d_up | (b.d_down << 1) | (b.d_left << 2) | (b.d_right << 3) | (b.start << 4) | (b.a << 5) | (b.b << 6);
 
     set_key(SCANCODE_UP, b.d_up || in.stick_y > 40);
     set_key(SCANCODE_DOWN, b.d_down || in.stick_y < -40);
@@ -158,9 +166,10 @@ static void n64_report_stats(void) {
         frames = 0;
     } else if (now - last_report_ms >= 2000) {
         struct mallinfo mi = mallinfo();
-        dr_dprintf("n64: %d fps*10, heap in use %d KB of %d KB RAM",
+        dr_dprintf("n64: %d fps*10, heap in use %d KB of %d KB RAM, fpu fixups %d, pad %02x stick %d,%d, keys %08x %08x",
             (int)(frames * 10000.0f / (float)(now - last_report_ms)),
-            (int)(mi.uordblks / 1024), (int)(get_memory_size() / 1024));
+            (int)(mi.uordblks / 1024), (int)(get_memory_size() / 1024), gN64_fpu_fixups,
+            gPad_buttons, gPad_stick_x, gPad_stick_y, (unsigned)key_state[6], (unsigned)key_state[0]);
         last_report_ms = now;
         frames = 0;
     }

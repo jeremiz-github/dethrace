@@ -22,7 +22,9 @@ bool debug_init_emulog(void);
 #include <fatfs/ff.h>
 #include <fatfs/diskio.h>
 
+#include <math.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -262,6 +264,71 @@ void OS_N64_InitDebugLogs(void) {
     debug_init_usblog();
 }
 
+// The VR4300 raises an "unimplemented operation" exception when a float -> integer conversion overflows (or
+// the value is NaN), where the PC just returns a value. The game does this routinely (e.g. srand(position *
+// 16777216)), so emulate the conversion with saturation instead of dying, then resume after the instruction.
+static exception_handler_t gN64_prev_exception_handler;
+volatile int gN64_fpu_fixups;
+
+static void n64_fpu_exception(exception_t* ex) {
+    reg_block_t* r = ex->regs;
+
+    if (ex->code == EXCEPTION_CODE_FLOATING_POINT && !(r->cr & 0x80000000u)) { // not in a branch delay slot
+        uint32_t insn = *(volatile uint32_t*)(uintptr_t)r->epc;
+        uint32_t fmt = (insn >> 21) & 0x1F;
+        uint32_t funct = insn & 0x3F;
+        uint32_t fs = (insn >> 11) & 0x1F;
+        uint32_t fd = (insn >> 6) & 0x1F;
+        int is_w = funct == 0x0C || funct == 0x0D || funct == 0x0E || funct == 0x0F || funct == 0x24;
+        int is_l = funct == 0x08 || funct == 0x09 || funct == 0x0A || funct == 0x0B || funct == 0x25;
+
+        if ((insn >> 26) == 0x11 && (fmt == 16 || fmt == 17) && (is_w || is_l)) {
+            double d;
+            if (fmt == 16) {
+                uint32_t bits = (uint32_t)r->fpr[fs];
+                float f;
+                memcpy(&f, &bits, sizeof(f));
+                d = f;
+            } else {
+                memcpy(&d, &r->fpr[fs], sizeof(d));
+            }
+
+            if (d != d) {
+                d = 0.0;
+            } else {
+                switch (funct & 3) { // 0/4: round (cvt: current mode = nearest), 1: trunc, 2: ceil, 3: floor
+                    case 1:
+                        d = d < 0 ? ceil(d) : floor(d);
+                        break;
+                    case 2:
+                        d = ceil(d);
+                        break;
+                    case 3:
+                        d = floor(d);
+                        break;
+                    default:
+                        d = floor(d + 0.5);
+                        break;
+                }
+            }
+            if (is_w) {
+                int32_t v = d >= 2147483647.0 ? INT32_MAX : (d <= -2147483648.0 ? INT32_MIN : (int32_t)d);
+                r->fpr[fd] = (uint32_t)v;
+            } else {
+                int64_t v = d >= 9.2233720368547758e18 ? INT64_MAX : (d <= -9.2233720368547758e18 ? INT64_MIN : (int64_t)d);
+                r->fpr[fd] = (uint64_t)v;
+            }
+            r->fc31 &= ~C1_CAUSE_MASK;
+            r->epc += 4;
+            gN64_fpu_fixups++;
+            return;
+        }
+    }
+    if (gN64_prev_exception_handler != NULL) {
+        gN64_prev_exception_handler(ex);
+    }
+}
+
 // The PC game relies on IEEE defaults (x/0 = inf, no traps). libdragon turns on FPU traps for overflow,
 // divide-by-zero and invalid operations, which kills the game as soon as it divides by zero. Switch the
 // traps off (results become inf/NaN like on PC) and flush denormals to zero (the VR4300 cannot handle them).
@@ -271,6 +338,7 @@ void OS_N64_ConfigureFPU(void) {
     fcr31 &= ~(C1_ENABLE_MASK | C1_CAUSE_MASK);
     fcr31 |= C1_FCR31_FS;
     C1_WRITE_FCR31(fcr31);
+    gN64_prev_exception_handler = register_exception_handler(n64_fpu_exception);
 }
 
 void OS_N64_FixConsoleType(void) {
