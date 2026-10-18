@@ -90,7 +90,7 @@ extern size_t OS_N64_ReadArgsFile(char* buffer, size_t size);
 //   -simple 3      simplify far-away opponent cars sooner
 //   -yon 0.6       shorter draw distance, fewer polygons
 // Override by putting your own line of arguments in ARGS.TXT next to the DATA folder.
-#define N64_DEFAULT_ARGS "-noreplay -lomem -nosound -nocutscenes -simple 3 -yon 0.6"
+#define N64_DEFAULT_ARGS "-noreplay -lomem -nosound -nocutscenes -simple 3 -yon 0.6 --enable-diagnostics"
 
 // libdragon entry point: set up logging and the filesystems, then hand over to the game.
 int main(void) {

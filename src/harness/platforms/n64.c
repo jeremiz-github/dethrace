@@ -12,6 +12,8 @@
 
 #include <libdragon.h>
 
+extern void dr_dprintf(char* fmt_string, ...);
+
 #include <malloc.h>
 #include <stdio.h>
 #include <string.h>
@@ -99,8 +101,22 @@ static br_uint_32 N64_Harness_GetTicks(void) {
     return (br_uint_32)get_ticks_ms();
 }
 
+// Fatal errors: show the message on a text screen (also in the DIAGNOST.TXT log) and stop.
 static int N64_Harness_ShowErrorMessage(char* title, char* message) {
+    struct mallinfo mi = mallinfo();
+
     fprintf(stderr, "%s: %s\n", title, message);
+    if (video_ready) {
+        display_close();
+        video_ready = 0;
+    }
+    console_init();
+    console_set_debug(false);
+    printf("\n  %s\n\n  %s\n\n  heap in use: %d KB of %d KB RAM\n  (details in DIAGNOST.TXT on the SD card)\n",
+        title, message, (int)(mi.uordblks / 1024), (int)(get_memory_size() / 1024));
+    console_render();
+    for (;;) {
+    }
     return 0;
 }
 
@@ -142,8 +158,8 @@ static void n64_report_stats(void) {
         frames = 0;
     } else if (now - last_report_ms >= 2000) {
         struct mallinfo mi = mallinfo();
-        debugf("dethrace: %.1f fps, heap in use %d KB of %d KB RAM\n",
-            frames * 1000.0f / (float)(now - last_report_ms),
+        dr_dprintf("n64: %d fps*10, heap in use %d KB of %d KB RAM",
+            (int)(frames * 10000.0f / (float)(now - last_report_ms)),
             (int)(mi.uordblks / 1024), (int)(get_memory_size() / 1024));
         last_report_ms = now;
         frames = 0;
