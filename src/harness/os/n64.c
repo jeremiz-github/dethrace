@@ -262,6 +262,17 @@ void OS_N64_InitDebugLogs(void) {
     debug_init_usblog();
 }
 
+// The PC game relies on IEEE defaults (x/0 = inf, no traps). libdragon turns on FPU traps for overflow,
+// divide-by-zero and invalid operations, which kills the game as soon as it divides by zero. Switch the
+// traps off (results become inf/NaN like on PC) and flush denormals to zero (the VR4300 cannot handle them).
+void OS_N64_ConfigureFPU(void) {
+    uint32_t fcr31 = C1_FCR31();
+
+    fcr31 &= ~(C1_ENABLE_MASK | C1_CAUSE_MASK);
+    fcr31 |= C1_FCR31_FS;
+    C1_WRITE_FCR31(fcr31);
+}
+
 void OS_N64_FixConsoleType(void) {
     extern int __boot_consoletype;
     gN64_boot_consoletype = __boot_consoletype;

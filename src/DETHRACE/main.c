@@ -79,6 +79,7 @@ int main(int argc, char* argv[]) {
 
 extern void OS_N64_InitFilesystem(void);
 extern void OS_N64_FixConsoleType(void);
+extern void OS_N64_ConfigureFPU(void);
 extern void OS_N64_InitDebugLogs(void);
 extern size_t OS_N64_ReadArgsFile(char* buffer, size_t size);
 
@@ -101,6 +102,7 @@ int main(void) {
     size_t n;
 
     OS_N64_FixConsoleType();
+    OS_N64_ConfigureFPU();
     OS_N64_InitDebugLogs();
     OS_N64_InitFilesystem();
 
