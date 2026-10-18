@@ -256,6 +256,14 @@ void dr_dprintf(char* fmt_string, ...) {
     va_end(args);
     fputs("\n", gDiagnostic_file);
     fflush(gDiagnostic_file);
+#ifdef N64
+    // FAT only records the file size on close: reopen after every line so the log survives a hang/power-off
+    fclose(gDiagnostic_file);
+    gDiagnostic_file = fopen("DIAGNOST.TXT", "a");
+    if (gDiagnostic_file == NULL) {
+        return;
+    }
+#endif
 
     // Added by dethrace for debugging
     va_start(args, fmt_string);
