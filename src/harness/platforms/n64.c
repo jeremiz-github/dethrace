@@ -48,6 +48,9 @@ static void set_key(int scancode, int down) {
     }
 }
 
+// keypad 4 / 6 (the game's KEY_KP_4 / KEY_KP_6 key codes): free keys used for steering with the stick
+#define N64_KEY_STEER_LEFT 85
+#define N64_KEY_STEER_RIGHT 87
 extern int gKey_mapping[67];       // the game's action -> key table (from KEYMAP_n.TXT)
 extern unsigned char gScan_code[123][2];
 
@@ -72,7 +75,14 @@ static void set_action(int action, int down) {
 static int gPad_stick_x, gPad_stick_y;
 static unsigned gPad_buttons;
 
+// PollCarControls() (controls.c) bumps this every game tick of a race: that is how we know whether the
+// buttons should drive the car or navigate the menus.
+volatile int gN64_race_heartbeat;
+
 static void N64_Harness_ProcessWindowMessages(void) {
+    static int last_heartbeat = 0;
+    static int frames_since_poll = 100;
+
     joypad_poll();
     joypad_inputs_t in = joypad_get_inputs(JOYPAD_PORT_1);
     joypad_buttons_t b = in.btn;
@@ -81,33 +91,49 @@ static void N64_Harness_ProcessWindowMessages(void) {
     gPad_stick_y = in.stick_y;
     gPad_buttons = b.d_up | (b.d_down << 1) | (b.d_left << 2) | (b.d_right << 3) | (b.start << 4) | (b.a << 5) | (b.b << 6);
 
+    if (gN64_race_heartbeat != last_heartbeat) {
+        last_heartbeat = gN64_race_heartbeat;
+        frames_since_poll = 0;
+    } else if (frames_since_poll < 100) {
+        frames_since_poll++;
+    }
+    int in_race = frames_since_poll < 4;
+
+    // The stick must only steer the wheels, not turn the camera: the camera turns with the arrow keys, which
+    // is also what the default key map uses for steering. So steering is rebound to two keypad keys that
+    // nothing else uses (re-applied every frame, in case the key map is reloaded).
+    gKey_mapping[46] = N64_KEY_STEER_LEFT;
+    gKey_mapping[47] = N64_KEY_STEER_RIGHT;
+
     memset(wanted_keys, 0, sizeof(wanted_keys));
 
-    // Menus: d-pad / stick act as the arrow keys, Start as Return.
-    want_key(SCANCODE_UP, b.d_up || in.stick_y > 40);
-    want_key(SCANCODE_DOWN, b.d_down || in.stick_y < -40);
-    want_key(SCANCODE_LEFT, b.d_left || in.stick_x < -40);
-    want_key(SCANCODE_RIGHT, b.d_right || in.stick_x > 40);
-    want_key(SCANCODE_RETURN, b.start);
+    // d-pad: arrow keys (menu navigation; in a race they turn the camera)
+    want_key(SCANCODE_UP, b.d_up);
+    want_key(SCANCODE_DOWN, b.d_down);
+    want_key(SCANCODE_LEFT, b.d_left);
+    want_key(SCANCODE_RIGHT, b.d_right);
 
-    // L+R together = Escape (pause / menu); alone they are the camera and power-up buttons.
-    int both_shoulders = b.l && b.r;
-    want_key(SCANCODE_ESCAPE, both_shoulders);
-
-    // In the race: drive through the game's own key map, so it works whatever the KEYMAP file says.
-    //   stick = steer, A = accelerate, B = brake/reverse, C-down = handbrake, Z = wheelspin,
-    //   C-up = recover, C-right = repair, C-left = horn, R = power-up, L = camera (cockpit view)
-    set_action(46, in.stick_x < -20 || b.d_left);        // steer left
-    set_action(47, in.stick_x > 20 || b.d_right);        // steer right
-    set_action(48, b.a);                                 // accelerate
-    set_action(49, b.b);                                 // brake / reverse
+    if (in_race) {
+        set_action(46, in.stick_x < -20);                // stick: steer left
+        set_action(47, in.stick_x > 20);                 // stick: steer right
+        set_action(48, b.a);                             // accelerate
+        set_action(49, b.b);                             // brake / reverse
+        want_key(SCANCODE_ESCAPE, b.start);              // pause menu
+    } else {
+        want_key(SCANCODE_UP, in.stick_y > 40);          // menus: stick = arrows
+        want_key(SCANCODE_DOWN, in.stick_y < -40);
+        want_key(SCANCODE_LEFT, in.stick_x < -40);
+        want_key(SCANCODE_RIGHT, in.stick_x > 40);
+        want_key(SCANCODE_RETURN, b.a || b.start);       // validate
+        want_key(SCANCODE_ESCAPE, b.b);                  // back
+    }
     set_action(53, b.c_down);                            // handbrake
     set_action(12, b.z);                                 // hold wheelspin
     set_action(59, b.c_up);                              // KEYMAP_RECOVERY
     set_action(44, b.c_right);                           // KEYMAP_REPAIR
     set_action(58, b.c_left);                            // horn
-    set_action(63, b.r && !both_shoulders);              // KEYMAP_BUY_POWER (power-up)
-    set_action(45, b.l && !both_shoulders);              // KEYMAP_COCKPIT (camera)
+    set_action(45, b.r);                                 // KEYMAP_COCKPIT: cockpit / exterior view
+    set_action(56, b.l);                                 // KEYMAP_MAP
 
     // apply: report every key whose state changed
     for (int sc = 0; sc < 256; sc++) {

@@ -1951,6 +1951,11 @@ void PollCarControls(tU32 pTime_difference) {
     tJoystick joystick;
     tCar_spec* c;
 
+#ifdef N64
+    // lets the N64 platform layer know we are in a race (pad buttons mean something else in the menus)
+    extern volatile int gN64_race_heartbeat;
+    gN64_race_heartbeat++;
+#endif
     decay_steering = 1;
     decay_speed = 1;
 
