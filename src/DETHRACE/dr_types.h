@@ -2012,6 +2012,11 @@ typedef struct tFlic_descriptor {
     int bytes_in_buffer;
     FILE* f;
     tFlic_descriptor_ptr next;
+#ifdef N64
+    int n64_stream;
+    long n64_pos;
+    char n64_path[200];
+#endif
 } tFlic_descriptor;
 
 typedef struct tBrender_storage {

@@ -769,9 +769,21 @@ int StartFlic(char* pFile_name, int pIndex, tFlic_descriptor_ptr pFlic_info, tU3
         fread(pFlic_info->data, 1, pFlic_info->bytes_in_buffer, pFlic_info->f);
         strcpy(gLast_flic_name, pFile_name);
         pFlic_info->bytes_still_to_be_read = total_size - pFlic_info->bytes_in_buffer;
+#ifdef N64
+        // libdragon only allows 4 open FAT files: don't keep the stream open, reopen for each refill
+        strncpy(pFlic_info->n64_path, the_path, sizeof(pFlic_info->n64_path) - 1);
+        pFlic_info->n64_path[sizeof(pFlic_info->n64_path) - 1] = '\0';
+        pFlic_info->n64_pos = pFlic_info->bytes_in_buffer;
+        fclose(pFlic_info->f);
+        pFlic_info->f = NULL;
+        pFlic_info->n64_stream = 1;
+#endif
     } else {
         pFlic_info->data = (char*)pData_ptr;
         pFlic_info->f = NULL;
+#ifdef N64
+        pFlic_info->n64_stream = 0;
+#endif
     }
     pFlic_info->bytes_remaining = MemReadU32(&pFlic_info->data);
     magic_number = MemReadU16(&pFlic_info->data);
@@ -850,6 +862,13 @@ void FreeFlicPaletteAllocate(void) {
 // FUNCTION: CARM95 0x00495f71
 int EndFlic(tFlic_descriptor_ptr pFlic_info) {
 
+#ifdef N64
+    if (pFlic_info->n64_stream) {
+        pFlic_info->n64_stream = 0;
+        BrMemFree(pFlic_info->data_start);
+        pFlic_info->data_start = NULL;
+    }
+#endif
     if (pFlic_info->f != NULL) {
         BrMemFree(pFlic_info->data_start);
         pFlic_info->data_start = NULL;
@@ -1502,6 +1521,14 @@ int PlayNextFlicFrame2(tFlic_descriptor* pFlic_info, int pPanel_flic) {
     if (gTrans_enabled && gTranslation_count != 0 && !pPanel_flic) {
         DrawTranslations(pFlic_info, last_frame);
     }
+#ifdef N64
+    if (pFlic_info->n64_stream && pFlic_info->bytes_still_to_be_read && pFlic_info->f == NULL) {
+        pFlic_info->f = fopen(pFlic_info->n64_path, "rb");
+        if (pFlic_info->f != NULL) {
+            fseek(pFlic_info->f, pFlic_info->n64_pos, SEEK_SET);
+        }
+    }
+#endif
     if (pFlic_info->f != NULL && pFlic_info->bytes_still_to_be_read) {
         data_knocked_off = pFlic_info->data - pFlic_info->data_start;
 #ifdef DETHRACE_FIX_BUGS
@@ -1522,7 +1549,16 @@ int PlayNextFlicFrame2(tFlic_descriptor* pFlic_info, int pPanel_flic) {
         }
         pFlic_info->bytes_in_buffer += read_amount;
         pFlic_info->bytes_still_to_be_read -= read_amount;
+#ifdef N64
+        pFlic_info->n64_pos += read_amount;
+#endif
     }
+#ifdef N64
+    if (pFlic_info->n64_stream && pFlic_info->f != NULL) {
+        fclose(pFlic_info->f);
+        pFlic_info->f = NULL;
+    }
+#endif
     return last_frame;
 }
 
