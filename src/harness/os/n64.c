@@ -28,6 +28,8 @@ bool debug_init_emulog(void);
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+extern void dr_dprintf(char* fmt_string, ...);
 #include <sys/stat.h>
 
 #define N64_PATH_MAX 256
@@ -90,9 +92,28 @@ extern int __real_stat(const char* path, struct stat* st);
 extern int __real_unlink(char* path);
 extern int __real_mkdir(const char* path, mode_t mode);
 
+extern int __real_close(int fd);
+
+// Track open files: libdragon's FAT layer only allows 4 at once, so a leak shows up as ENOENT/EMFILE-like failures.
+#define N64_OPEN_SLOTS 16
+static struct {
+    int fd;
+    char path[48];
+} gN64_open_files[N64_OPEN_SLOTS];
+
+void OS_N64_DumpOpenFiles(const char* why) {
+    int i;
+    dr_dprintf("open files (%s):", why);
+    for (i = 0; i < N64_OPEN_SLOTS; i++) {
+        if (gN64_open_files[i].path[0] != '\0') {
+            dr_dprintf("  fd %d %s", gN64_open_files[i].fd, gN64_open_files[i].path);
+        }
+    }
+}
+
 int __wrap_open(const char* path, int flags, ...) {
     char full[N64_PATH_MAX];
-    int mode;
+    int mode, fd, i;
     va_list ap;
 
     va_start(ap, flags);
@@ -100,7 +121,31 @@ int __wrap_open(const char* path, int flags, ...) {
     va_end(ap);
 
     n64_resolve(path, full, sizeof(full));
-    return __real_open(full, flags, mode);
+    fd = __real_open(full, flags, mode);
+    if (fd >= 0) {
+        for (i = 0; i < N64_OPEN_SLOTS; i++) {
+            if (gN64_open_files[i].path[0] == '\0') {
+                gN64_open_files[i].fd = fd;
+                strncpy(gN64_open_files[i].path, full, sizeof(gN64_open_files[i].path) - 1);
+                break;
+            }
+        }
+    } else if (strstr(full, "DIAGNOST") == NULL) {
+        dr_dprintf("open FAILED errno %d: %s", errno, full);
+        OS_N64_DumpOpenFiles("after failed open");
+    }
+    return fd;
+}
+
+int __wrap_close(int fd) {
+    int i;
+    for (i = 0; i < N64_OPEN_SLOTS; i++) {
+        if (gN64_open_files[i].path[0] != '\0' && gN64_open_files[i].fd == fd) {
+            gN64_open_files[i].path[0] = '\0';
+            break;
+        }
+    }
+    return __real_close(fd);
 }
 
 int __wrap_stat(const char* path, struct stat* st) {

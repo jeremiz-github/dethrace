@@ -120,6 +120,29 @@ tU32 CalcLSChecksum(tSave_game* pSaved_game) {
 #endif
 }
 
+#ifdef N64
+static void SwapSaveIntegers(tSave_game* g) {
+    int i;
+
+    g->version = BrSwap32(g->version);
+    g->rank = BrSwap32(g->rank);
+    g->credits = BrSwap32(g->credits);
+    g->skill_level = BrSwap32(g->skill_level);
+    g->frank_or_annitude = BrSwap32(g->frank_or_annitude);
+    g->game_completed = BrSwap32(g->game_completed);
+    g->current_race_index = BrSwap32(g->current_race_index);
+    g->number_of_cars = BrSwap32(g->number_of_cars);
+    for (i = 0; i < COUNT_OF(g->cars_available); i++) {
+        g->cars_available[i] = BrSwap32(g->cars_available[i]);
+    }
+    g->current_car_index = BrSwap32(g->current_car_index);
+    g->redo_race_index = BrSwap32(g->redo_race_index);
+    for (i = 0; i < COUNT_OF(g->power_up_levels); i++) {
+        g->power_up_levels[i] = BrSwap32(g->power_up_levels[i]);
+    }
+}
+#endif
+
 // IDA: void __cdecl LoadSavedGames()
 // FUNCTION: CARM95 0x0044b9b0
 void LoadSavedGames(void) {
@@ -142,11 +165,23 @@ void LoadSavedGames(void) {
         if (f != NULL) {
             the_size = GetFileLength(f);
             if (the_size != sizeof(tSave_game)) {
+#ifdef N64
+                dr_dprintf("LoadSavedGames: slot %d size %d, expected %d", i, (int)the_size, (int)sizeof(tSave_game));
+#endif
                 gSaved_games[i] = NULL;
             } else {
                 gSaved_games[i] = BrMemCalloc(1, sizeof(tSave_game), kMem_saved_game);
                 fread(gSaved_games[i], 1, the_size, f);
                 CorrectLoadByteOrdering(i);
+#ifdef N64
+                // Saves written by the original game (little-endian integers) are accepted as well as
+                // those written by dethrace (big-endian integers).
+                if (CalcLSChecksum(gSaved_games[i]) != gSaved_games[i]->checksum || gSaved_games[i]->version != SAVEGAME_VERSION) {
+                    SwapSaveIntegers(gSaved_games[i]);
+                }
+                dr_dprintf("LoadSavedGames: slot %d version %d checksum %08x (computed %08x)", i,
+                    (int)gSaved_games[i]->version, (unsigned)gSaved_games[i]->checksum, (unsigned)CalcLSChecksum(gSaved_games[i]));
+#endif
                 if (CalcLSChecksum(gSaved_games[i]) != gSaved_games[i]->checksum || gSaved_games[i]->version != SAVEGAME_VERSION) {
                     BrMemFree(gSaved_games[i]);
                     gSaved_games[i] = NULL;

@@ -3220,6 +3220,16 @@ void LoadFont(int pFont_ID) {
         gFonts[pFont_ID].images = DRPixelmapLoad(the_path);
 
         if (gFonts[pFont_ID].images == NULL) {
+#ifdef N64
+            {
+                FILE* probe = fopen(the_path, "rb");
+                dr_dprintf("LoadFont: '%s' failed; fopen %s, size %d", the_path, probe ? "ok" : "FAILED",
+                    probe ? (int)GetFileLength(probe) : -1);
+                if (probe) {
+                    fclose(probe);
+                }
+            }
+#endif
             FatalError(kFatalError_LoadFontImage_S, gFont_names[pFont_ID]);
         }
         gFonts[pFont_ID].images->row_bytes = (gFonts[pFont_ID].images->row_bytes + 3) & ~3;

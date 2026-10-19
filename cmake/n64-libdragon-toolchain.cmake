@@ -42,7 +42,7 @@ set(CMAKE_C_FLAGS_RELEASE_INIT "-O2 -DNDEBUG")
 set(CMAKE_C_FLAGS_DEBUG_INIT "-O1 -g")
 
 # Linking: libdragon's linker script + libs, as in n64.mk
-set(CMAKE_EXE_LINKER_FLAGS_INIT "-L${N64_LIBDIR} -Wl,-T${N64_LIBDIR}/n64.ld -Wl,--gc-sections -Wl,--wrap=__do_global_ctors -Wl,--wrap=open -Wl,--wrap=stat -Wl,--wrap=unlink -Wl,--wrap=mkdir -Wl,--wrap=cart_card_init -Wl,--wrap=cart_init")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "-L${N64_LIBDIR} -Wl,-T${N64_LIBDIR}/n64.ld -Wl,--gc-sections -Wl,--wrap=__do_global_ctors -Wl,--wrap=open -Wl,--wrap=close -Wl,--wrap=stat -Wl,--wrap=unlink -Wl,--wrap=mkdir -Wl,--wrap=cart_card_init -Wl,--wrap=cart_init")
 set(CMAKE_C_STANDARD_LIBRARIES "-ldragon -lm -ldragonsys -lc")
 
 set(CMAKE_FIND_ROOT_PATH "${N64_INST}/${N64_TARGET}")

@@ -111,6 +111,8 @@ else()
     set(WORDS_BIGENDIAN FALSE)
     message(WARNING "Endianness could not be determined.")
 endif()
+# The per-target BR_ENDIAN_* definitions in src/*/CMakeLists.txt key off this variable
+set(IS_BIGENDIAN ${WORDS_BIGENDIAN})
 
 set(count_sdl_platforms 0)
 
