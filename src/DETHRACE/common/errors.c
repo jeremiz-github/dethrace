@@ -258,10 +258,20 @@ void dr_dprintf(char* fmt_string, ...) {
     fflush(gDiagnostic_file);
 #ifdef N64
     // FAT only records the file size on close: reopen after every line so the log survives a hang/power-off
-    fclose(gDiagnostic_file);
-    gDiagnostic_file = fopen("DIAGNOST.TXT", "a");
-    if (gDiagnostic_file == NULL) {
-        return;
+    // (at most once a second, and at once for fatal messages, to keep SD writes from stalling the game)
+    {
+        extern unsigned int OS_N64_Millis(void);
+        static unsigned int last_reopen = 0;
+        unsigned int now = OS_N64_Millis();
+        if (now - last_reopen > 1000 || strstr(fmt_string, "ATAL") != NULL || strstr(fmt_string, "Can't") != NULL
+            || strstr(fmt_string, "FAILED") != NULL || strstr(fmt_string, "failed") != NULL) {
+            last_reopen = now;
+            fclose(gDiagnostic_file);
+            gDiagnostic_file = fopen("DIAGNOST.TXT", "a");
+            if (gDiagnostic_file == NULL) {
+                return;
+            }
+        }
     }
 #endif
 

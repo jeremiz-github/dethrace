@@ -131,8 +131,15 @@ int __wrap_open(const char* path, int flags, ...) {
             }
         }
     } else if (strstr(full, "DIAGNOST") == NULL) {
-        dr_dprintf("open FAILED errno %d: %s", errno, full);
-        OS_N64_DumpOpenFiles("after failed open");
+        // a missing optional file is normal; only report when the FAT layer's 4 slots may be exhausted
+        int used = 0;
+        for (i = 0; i < N64_OPEN_SLOTS; i++) {
+            used += gN64_open_files[i].path[0] != '\0';
+        }
+        if (used >= 4) {
+            dr_dprintf("open FAILED errno %d with %d files open: %s", errno, used, full);
+            OS_N64_DumpOpenFiles("after failed open");
+        }
     }
     return fd;
 }
@@ -566,4 +573,8 @@ int OS_SetSocketNonBlocking(int socket) {
 
 int OS_CloseSocket(int socket) {
     return 1;
+}
+
+unsigned int OS_N64_Millis(void) {
+    return (unsigned int)(get_ticks_ms());
 }

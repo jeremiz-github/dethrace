@@ -1939,6 +1939,13 @@ void BrakeInstantly(void) {
     BrVector3Set(&gProgram_state.current_car.v, 0.f, 0.f, 0.f);
 }
 
+#ifdef N64
+// lets the N64 platform layer know whether the car is being driven (the pad buttons mean something else in the menus)
+int OS_N64_InRace(void) {
+    return gProgram_state.racing;
+}
+#endif
+
 // IDA: void __usercall PollCarControls(tU32 pTime_difference@<EAX>)
 // FUNCTION: CARM95 0x004a3d80
 void PollCarControls(tU32 pTime_difference) {
@@ -1951,11 +1958,6 @@ void PollCarControls(tU32 pTime_difference) {
     tJoystick joystick;
     tCar_spec* c;
 
-#ifdef N64
-    // lets the N64 platform layer know we are in a race (pad buttons mean something else in the menus)
-    extern volatile int gN64_race_heartbeat;
-    gN64_race_heartbeat++;
-#endif
     decay_steering = 1;
     decay_speed = 1;
 

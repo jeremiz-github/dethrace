@@ -1,4 +1,7 @@
 #include "utility.h"
+#ifdef N64
+#include <malloc.h>
+#endif
 #include <stdlib.h>
 
 #include "brender.h"
@@ -513,6 +516,17 @@ br_uint_32 DRPixelmapLoadMany(char* pFile_name, br_pixelmap** pPixelmaps, br_uin
     int i;
 
     number_loaded = BrPixelmapLoadMany(pFile_name, pPixelmaps, pNum);
+#ifdef N64
+    if (number_loaded == 0) {
+        FILE* probe = fopen(pFile_name, "rb");
+        struct mallinfo mi = mallinfo();
+        dr_dprintf("DRPixelmapLoadMany: no pixelmap from '%s' (fopen %s, size %d, heap in use %d KB)", pFile_name,
+            probe ? "ok" : "FAILED", probe ? (int)GetFileLength(probe) : -1, mi.uordblks / 1024);
+        if (probe) {
+            fclose(probe);
+        }
+    }
+#endif
     for (i = 0; i < number_loaded; i++) {
         pPixelmaps[i]->row_bytes = (pPixelmaps[i]->row_bytes + sizeof(tS32) - 1) & ~(sizeof(tS32) - 1);
         pPixelmaps[i]->base_x = 0;

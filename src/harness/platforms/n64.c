@@ -75,14 +75,12 @@ static void set_action(int action, int down) {
 static int gPad_stick_x, gPad_stick_y;
 static unsigned gPad_buttons;
 
-// PollCarControls() (controls.c) bumps this every game tick of a race: that is how we know whether the
-// buttons should drive the car or navigate the menus.
-volatile int gN64_race_heartbeat;
+// gProgram_state.racing (controls.c helper): true only while the car is actually being driven, not in the pause menu
+// or any other screen. The buttons drive the car then, and navigate the menus otherwise.
+extern int OS_N64_InRace(void);
+extern int gJoy_array[8];
 
 static void N64_Harness_ProcessWindowMessages(void) {
-    static int last_heartbeat = 0;
-    static int frames_since_poll = 100;
-
     joypad_poll();
     joypad_inputs_t in = joypad_get_inputs(JOYPAD_PORT_1);
     joypad_buttons_t b = in.btn;
@@ -91,19 +89,15 @@ static void N64_Harness_ProcessWindowMessages(void) {
     gPad_stick_y = in.stick_y;
     gPad_buttons = b.d_up | (b.d_down << 1) | (b.d_left << 2) | (b.d_right << 3) | (b.start << 4) | (b.a << 5) | (b.b << 6);
 
-    if (gN64_race_heartbeat != last_heartbeat) {
-        last_heartbeat = gN64_race_heartbeat;
-        frames_since_poll = 0;
-    } else if (frames_since_poll < 100) {
-        frames_since_poll++;
-    }
-    int in_race = frames_since_poll < 4;
+    int in_race = OS_N64_InRace();
 
     // The stick must only steer the wheels, not turn the camera: the camera turns with the arrow keys, which
-    // is also what the default key map uses for steering. So steering is rebound to two keypad keys that
-    // nothing else uses (re-applied every frame, in case the key map is reloaded).
-    gKey_mapping[46] = N64_KEY_STEER_LEFT;
-    gKey_mapping[47] = N64_KEY_STEER_RIGHT;
+    // is also what the default key map uses for steering. Steering is rebound to the game's joystick axes 0 and 1
+    // (key codes 115/116), which give analog steering (0..65535 each way) and never touch the keyboard.
+    gKey_mapping[46] = 115;
+    gKey_mapping[47] = 116;
+    gJoy_array[0] = -1;
+    gJoy_array[1] = -1;
 
     memset(wanted_keys, 0, sizeof(wanted_keys));
 
@@ -114,8 +108,20 @@ static void N64_Harness_ProcessWindowMessages(void) {
     want_key(SCANCODE_RIGHT, b.d_right);
 
     if (in_race) {
-        set_action(46, in.stick_x < -20);                // stick: steer left
-        set_action(47, in.stick_x > 20);                 // stick: steer right
+        {
+            int x = in.stick_x;
+            int mag = x < 0 ? -x : x;
+            int amount = 0;
+            if (mag > 8) { // dead zone; the N64 stick reaches about 80
+                amount = (mag - 8) * 65535 / 68;
+                if (amount > 65535) {
+                    amount = 65535;
+                }
+            }
+            if (amount > 0) {
+                gJoy_array[x < 0 ? 0 : 1] = amount;
+            }
+        }
         set_action(48, b.a);                             // accelerate
         set_action(49, b.b);                             // brake / reverse
         want_key(SCANCODE_ESCAPE, b.start);              // pause menu
