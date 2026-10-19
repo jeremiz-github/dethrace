@@ -48,6 +48,27 @@ static void set_key(int scancode, int down) {
     }
 }
 
+extern int gKey_mapping[67];       // the game's action -> key table (from KEYMAP_n.TXT)
+extern unsigned char gScan_code[123][2];
+
+// Keys wanted down this frame (several pad inputs can map onto the same key): applied once at the end.
+static br_uint_32 wanted_keys[8];
+
+static void want_key(int scancode, int down) {
+    if (down) {
+        wanted_keys[scancode >> 5] |= 1u << (scancode & 0x1F);
+    }
+}
+
+// Presses the key the game currently has bound to action `action` (an index into gKey_mapping).
+static void set_action(int action, int down) {
+    int key = gKey_mapping[action];
+
+    if (key >= 0 && key < 115 && gScan_code[key][0] != 0) { // 115+ are joystick axes/buttons, not keys
+        want_key(gScan_code[key][0], down);
+    }
+}
+
 static int gPad_stick_x, gPad_stick_y;
 static unsigned gPad_buttons;
 
@@ -60,19 +81,38 @@ static void N64_Harness_ProcessWindowMessages(void) {
     gPad_stick_y = in.stick_y;
     gPad_buttons = b.d_up | (b.d_down << 1) | (b.d_left << 2) | (b.d_right << 3) | (b.start << 4) | (b.a << 5) | (b.b << 6);
 
-    set_key(SCANCODE_UP, b.d_up || in.stick_y > 40);
-    set_key(SCANCODE_DOWN, b.d_down || in.stick_y < -40);
-    set_key(SCANCODE_LEFT, b.d_left || in.stick_x < -40);
-    set_key(SCANCODE_RIGHT, b.d_right || in.stick_x > 40);
-    set_key(SCANCODE_RETURN, b.start);
-    set_key(SCANCODE_SPACE, b.a);                        // handbrake / select
-    set_key(SCANCODE_LCONTROL, b.b);                     // fire / back
-    set_key(SCANCODE_ESCAPE, b.l && b.r);                // pause / menu
-    set_key(SCANCODE_TAB, b.z);                          // switch view
-    set_key(SCANCODE_LSHIFT, b.c_up);                    // turbo
-    set_key(SCANCODE_F1, b.c_left);
-    set_key(SCANCODE_F2, b.c_right);
-    set_key(SCANCODE_F3, b.c_down);
+    memset(wanted_keys, 0, sizeof(wanted_keys));
+
+    // Menus: d-pad / stick act as the arrow keys, Start as Return.
+    want_key(SCANCODE_UP, b.d_up || in.stick_y > 40);
+    want_key(SCANCODE_DOWN, b.d_down || in.stick_y < -40);
+    want_key(SCANCODE_LEFT, b.d_left || in.stick_x < -40);
+    want_key(SCANCODE_RIGHT, b.d_right || in.stick_x > 40);
+    want_key(SCANCODE_RETURN, b.start);
+
+    // L+R together = Escape (pause / menu); alone they are the camera and power-up buttons.
+    int both_shoulders = b.l && b.r;
+    want_key(SCANCODE_ESCAPE, both_shoulders);
+
+    // In the race: drive through the game's own key map, so it works whatever the KEYMAP file says.
+    //   stick = steer, A = accelerate, B = brake/reverse, C-down = handbrake, Z = wheelspin,
+    //   C-up = recover, C-right = repair, C-left = horn, R = power-up, L = camera (cockpit view)
+    set_action(46, in.stick_x < -20 || b.d_left);        // steer left
+    set_action(47, in.stick_x > 20 || b.d_right);        // steer right
+    set_action(48, b.a);                                 // accelerate
+    set_action(49, b.b);                                 // brake / reverse
+    set_action(53, b.c_down);                            // handbrake
+    set_action(12, b.z);                                 // hold wheelspin
+    set_action(59, b.c_up);                              // KEYMAP_RECOVERY
+    set_action(44, b.c_right);                           // KEYMAP_REPAIR
+    set_action(58, b.c_left);                            // horn
+    set_action(63, b.r && !both_shoulders);              // KEYMAP_BUY_POWER (power-up)
+    set_action(45, b.l && !both_shoulders);              // KEYMAP_COCKPIT (camera)
+
+    // apply: report every key whose state changed
+    for (int sc = 0; sc < 256; sc++) {
+        set_key(sc, (wanted_keys[sc >> 5] >> (sc & 0x1F)) & 1);
+    }
 }
 
 static void N64_Harness_SetKeyHandler(void (*handler_func)(void)) {
