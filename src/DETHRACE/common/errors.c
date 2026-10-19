@@ -264,7 +264,8 @@ void dr_dprintf(char* fmt_string, ...) {
         static unsigned int last_reopen = 0;
         unsigned int now = OS_N64_Millis();
         if (now - last_reopen > 1000 || strstr(fmt_string, "ATAL") != NULL || strstr(fmt_string, "Can't") != NULL
-            || strstr(fmt_string, "FAILED") != NULL || strstr(fmt_string, "failed") != NULL) {
+            || strstr(fmt_string, "FAILED") != NULL || strstr(fmt_string, "failed") != NULL
+            || strstr(fmt_string, "at error") != NULL || strstr(fmt_string, "Displaying") != NULL) {
             last_reopen = now;
             fclose(gDiagnostic_file);
             gDiagnostic_file = fopen("DIAGNOST.TXT", "a");

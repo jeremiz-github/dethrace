@@ -182,13 +182,73 @@ static br_uint_32 N64_Harness_GetTicks(void) {
 }
 
 // Fatal errors: show the message on a text screen (also in the DIAGNOST.TXT log) and stop.
+// Largest block malloc can still hand out (binary search): shows heap fragmentation.
+static size_t n64_largest_free_block(void) {
+    size_t lo = 0, hi = 6u * 1024 * 1024;
+    while (hi - lo > 4096) {
+        size_t mid = (lo + hi) / 2;
+        void* p = malloc(mid);
+        if (p) {
+            free(p);
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo;
+}
+
+static void n64_draw_wrapped(surface_t* disp, int x, int* y, const char* text) {
+    char line[48];
+    int n = 0;
+    for (const char* c = text;; c++) {
+        if (*c == '\0' || *c == '\n' || n >= 36) {
+            line[n] = '\0';
+            graphics_draw_text(disp, x, *y, line);
+            *y += 10;
+            n = 0;
+            if (*c == '\0') {
+                break;
+            }
+            if (*c == '\n') {
+                continue;
+            }
+        }
+        if (*c != '\n') {
+            line[n++] = *c;
+        }
+    }
+}
+
 static int N64_Harness_ShowErrorMessage(char* title, char* message) {
     struct mallinfo mi = mallinfo();
+    size_t largest = n64_largest_free_block();
 
     fprintf(stderr, "%s: %s\n", title, message);
+    dr_dprintf("heap at error: in use %d KB, arena %d KB, free %d KB in %d chunks, largest block %d KB",
+        (int)(mi.uordblks / 1024), (int)(mi.arena / 1024), (int)(mi.fordblks / 1024), (int)mi.ordblks, (int)(largest / 1024));
+    dr_dprintf("Displaying fatal error...");
     if (video_ready) {
-        display_close();
-        video_ready = 0;
+        // draw straight into the current display buffers: allocating a console could fail when memory ran out
+        for (int pass = 0; pass < 2; pass++) {
+            surface_t* disp = display_get();
+            int y = 16;
+            graphics_fill_screen(disp, 0);
+            graphics_set_color(0xFFFFFFFF, 0);
+            n64_draw_wrapped(disp, 12, &y, title);
+            y += 10;
+            n64_draw_wrapped(disp, 12, &y, message);
+            y += 10;
+            {
+                char info[96];
+                snprintf(info, sizeof(info), "heap in use %d KB, largest free %d KB", (int)(mi.uordblks / 1024), (int)(largest / 1024));
+                n64_draw_wrapped(disp, 12, &y, info);
+            }
+            n64_draw_wrapped(disp, 12, &y, "(details in DIAGNOST.TXT on the SD card)");
+            display_show(disp);
+        }
+        for (;;) {
+        }
     }
     console_init();
     console_set_debug(false);
