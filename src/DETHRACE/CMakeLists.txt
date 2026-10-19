@@ -73,6 +73,8 @@ target_compile_definitions(dethrace PRIVATE INSIDE_DETHRACE)
 
 if(DETHRACE_PLATFORM_N64)
     target_compile_definitions(dethrace PRIVATE DETHRACE_PLATFORM_N64)
+    # the game logic is not the hot path (the software rasteriser is): optimise it for size, RAM is tight
+    target_compile_options(dethrace PRIVATE -Os)
 endif()
 
 if(DETHRACE_FIX_BUGS)

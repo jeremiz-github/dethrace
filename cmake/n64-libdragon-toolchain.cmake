@@ -33,7 +33,7 @@ set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
 # Same ABI/CPU flags as libdragon's n64.mk (o64 ABI: 32-bit int/long/pointers)
 # newlib's int32_t is `long` while this codebase mixes `int`/`long` for 32-bit types
 # (identical size/representation on the o64 ABI): accept that, and disable strict aliasing.
-set(N64_COMMON_FLAGS "-march=vr4300 -mtune=vr4300 -mabi=o64 -I${N64_INCLUDEDIR} -falign-functions=32 -ffunction-sections -fdata-sections -DN64 -fno-strict-aliasing -Wno-error=incompatible-pointer-types -Wno-incompatible-pointer-types")
+set(N64_COMMON_FLAGS "-march=vr4300 -mtune=vr4300 -mabi=o64 -I${N64_INCLUDEDIR} -ffunction-sections -fdata-sections -DN64 -fno-strict-aliasing -Wno-error=incompatible-pointer-types -Wno-incompatible-pointer-types")
 set(CMAKE_C_FLAGS_INIT "${N64_COMMON_FLAGS} -std=gnu17")
 set(CMAKE_CXX_FLAGS_INIT "${N64_COMMON_FLAGS} -std=gnu++17")
 set(CMAKE_ASM_FLAGS_INIT "${N64_COMMON_FLAGS}")

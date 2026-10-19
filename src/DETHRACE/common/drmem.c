@@ -298,6 +298,29 @@ void MAMSInitMem(void) {
 void PrintMemoryDump(int pFlags, char* pTitle) {
 }
 
+#ifdef N64
+static int gN64_mem_live[256];
+static int gN64_mem_count[256];
+
+void OS_N64_DumpMemoryByClass(void) {
+    int shown, i, best;
+    int done[256] = { 0 };
+    for (shown = 0; shown < 16; shown++) {
+        best = -1;
+        for (i = 0; i < 246; i++) {
+            if (!done[i] && (best < 0 || gN64_mem_live[i] > gN64_mem_live[best])) {
+                best = i;
+            }
+        }
+        if (best < 0 || gN64_mem_live[best] <= 0) {
+            break;
+        }
+        done[best] = 1;
+        dr_dprintf("mem class %s: %d KB in %d blocks", gMem_names[best], gN64_mem_live[best] / 1024, gN64_mem_count[best]);
+    }
+}
+#endif
+
 // IDA: void* __cdecl DRStdlibAllocate(br_size_t size, br_uint_8 type)
 // FUNCTION: CARM95 0x00463def
 void* DRStdlibAllocate(br_size_t size, br_uint_8 type) {
@@ -308,10 +331,23 @@ void* DRStdlibAllocate(br_size_t size, br_uint_8 type) {
     if (size == 0) {
         return NULL;
     } else {
+#ifdef N64
+        // memory accounting per BRender/Carmageddon allocation class (8-byte header), dumped at out-of-memory time
+        p = malloc(size + 8);
+        if (p != NULL) {
+            ((tU32*)p)[0] = (tU32)size;
+            ((tU32*)p)[1] = type;
+            gN64_mem_live[type] += size;
+            gN64_mem_count[type]++;
+            return (char*)p + 8;
+        }
+#else
         p = malloc(size);
         if (p != NULL) {
             return p;
-        } else {
+        }
+#endif
+        {
             if (gNon_fatal_allocation_errors) {
                 return NULL;
             } else {
@@ -328,7 +364,16 @@ void* DRStdlibAllocate(br_size_t size, br_uint_8 type) {
 // FUNCTION: CARM95 0x00463ea1
 void DRStdlibFree(void* mem) {
     int i;
+#ifdef N64
+    if (mem != NULL) {
+        tU32* h = (tU32*)((char*)mem - 8);
+        gN64_mem_live[h[1] & 0xFF] -= h[0];
+        gN64_mem_count[h[1] & 0xFF]--;
+        free(h);
+    }
+#else
     free(mem);
+#endif
 }
 
 // IDA: br_size_t __cdecl DRStdlibInquire(br_uint_8 type)

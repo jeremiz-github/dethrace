@@ -227,6 +227,10 @@ static int N64_Harness_ShowErrorMessage(char* title, char* message) {
     fprintf(stderr, "%s: %s\n", title, message);
     dr_dprintf("heap at error: in use %d KB, arena %d KB, free %d KB in %d chunks, largest block %d KB",
         (int)(mi.uordblks / 1024), (int)(mi.arena / 1024), (int)(mi.fordblks / 1024), (int)mi.ordblks, (int)(largest / 1024));
+    {
+        extern void OS_N64_DumpMemoryByClass(void);
+        OS_N64_DumpMemoryByClass();
+    }
     dr_dprintf("Displaying fatal error...");
     if (video_ready) {
         // draw straight into the current display buffers: allocating a console could fail when memory ran out
