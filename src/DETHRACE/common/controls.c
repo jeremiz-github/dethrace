@@ -1941,8 +1941,9 @@ void BrakeInstantly(void) {
 
 #ifdef N64
 // lets the N64 platform layer know whether the car is being driven (the pad buttons mean something else in the menus)
+int gN64_in_pause_menu;
 int OS_N64_InRace(void) {
-    return gProgram_state.racing;
+    return gProgram_state.racing && !gN64_in_pause_menu;
 }
 #endif
 

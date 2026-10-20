@@ -709,7 +709,16 @@ tRace_result MainGameLoop(void) {
                 FadePaletteDown();
                 ClearEntireScreen();
                 GoingToInterfaceFromRace();
+#ifdef N64
+                {
+                    extern int gN64_in_pause_menu;
+                    gN64_in_pause_menu = 1;
+                    DoMainMenuScreen(0, 0, 1);
+                    gN64_in_pause_menu = 0;
+                }
+#else
                 DoMainMenuScreen(0, 0, 1);
+#endif
                 GoingBackToRaceFromInterface();
                 AddLostTime(PDGetTotalTime() - start_menu_time);
             }

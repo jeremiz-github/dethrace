@@ -302,8 +302,40 @@ void PrintMemoryDump(int pFlags, char* pTitle) {
 static int gN64_mem_live[256];
 static int gN64_mem_count[256];
 
+static struct {
+    int bytes;
+    int w, h;
+    char name[24];
+} gN64_big_maps[14];
+
+static br_uint_32 n64_note_map(br_pixelmap* pm, void* arg) {
+    int bytes = pm->row_bytes * pm->height, i, worst = 0;
+    for (i = 1; i < 14; i++) {
+        if (gN64_big_maps[i].bytes < gN64_big_maps[worst].bytes) {
+            worst = i;
+        }
+    }
+    if (bytes > gN64_big_maps[worst].bytes) {
+        gN64_big_maps[worst].bytes = bytes;
+        gN64_big_maps[worst].w = pm->width;
+        gN64_big_maps[worst].h = pm->height;
+        strncpy(gN64_big_maps[worst].name, pm->identifier ? pm->identifier : "?", 23);
+        gN64_big_maps[worst].name[23] = '\0';
+    }
+    return 0;
+}
+
 void OS_N64_DumpMemoryByClass(void) {
     int shown, i, best;
+    memset(gN64_big_maps, 0, sizeof(gN64_big_maps));
+    BrMapEnum(NULL, n64_note_map, NULL);
+    BrTableEnum(NULL, n64_note_map, NULL);
+    for (i = 0; i < 14; i++) {
+        if (gN64_big_maps[i].bytes > 0) {
+            dr_dprintf("big pixelmap: %s %dx%d %d KB", gN64_big_maps[i].name, gN64_big_maps[i].w, gN64_big_maps[i].h,
+                gN64_big_maps[i].bytes / 1024);
+        }
+    }
     int done[256] = { 0 };
     for (shown = 0; shown < 16; shown++) {
         best = -1;
