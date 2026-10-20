@@ -302,19 +302,19 @@ void ClearOutStorageSpace(tBrender_storage* pStorage_space) {
 
 #ifdef N64
 // The N64 only has ~6 MB of heap: halve big 8-bit textures (in place, nearest-neighbour) to make tracks fit.
-static void N64_ShrinkTexture(br_pixelmap* pm) {
+static int N64_HalveTexture(br_pixelmap* pm) {
     int w = pm->width, h = pm->height, x, y;
     unsigned char *src, *dst, *np;
 
     if (pm->type != BR_PMT_INDEX_8 || pm->pixels == NULL || pm->mip_offset != 0 || pm->base_x != 0 || pm->base_y != 0) {
-        return;
+        return 0;
     }
     if (w < 64 || h < 64 || (w & (w - 1)) != 0 || (h & (h - 1)) != 0) {
-        return;
+        return 0;
     }
     np = BrResAllocate(pm, (w / 2) * (h / 2), BR_MEMORY_PIXELS);
     if (np == NULL) {
-        return;
+        return 0;
     }
     dst = np;
     for (y = 0; y < h / 2; y++) {
@@ -330,6 +330,19 @@ static void N64_ShrinkTexture(br_pixelmap* pm) {
     pm->row_bytes = w / 2;
     pm->origin_x /= 2;
     pm->origin_y /= 2;
+    return 1;
+}
+
+// Boot-menu option (0 = full quality, 1 = half, 2 = quarter size for the biggest textures).
+extern int gN64_texture_quality;
+
+static void N64_ShrinkTexture(br_pixelmap* pm) {
+    int level;
+    for (level = 0; level < gN64_texture_quality; level++) {
+        if (!N64_HalveTexture(pm)) {
+            break;
+        }
+    }
 }
 #endif
 

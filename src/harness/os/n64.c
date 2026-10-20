@@ -578,3 +578,169 @@ int OS_CloseSocket(int socket) {
 unsigned int OS_N64_Millis(void) {
     return (unsigned int)(get_ticks_ms());
 }
+
+// ---------------------------------------------------------------------------
+// Boot options menu: lets the game be tried in different memory/graphics configurations without
+// recompiling or editing files. Settings are remembered in OPTIONS.CFG next to the DATA folder.
+// ---------------------------------------------------------------------------
+
+int gN64_opponent_limit = -1;  // read by SelectOpponents()
+int gN64_texture_quality = 0;
+int gN64_physics_steps = 3;    // max physics substeps per frame (read by ApplyPhysicsToCars)  // read by AddPixelmapToStorage()
+
+typedef struct {
+    const char* key;
+    const char* name;
+    int min, max, def;
+    const char* const* labels; // optional text for each value (index = value - min)
+} tN64_option;
+
+static const char* const kOffOn[] = { "Off", "On" };
+static const char* const kTex[] = { "Full", "Half", "Quarter" };
+static const char* const kYon[] = { "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "1.0" };
+
+static const tN64_option gN64_option_defs[] = {
+    { "opponents", "Opponents", 0, 5, 5, NULL },
+    { "textures", "Texture quality", 0, 2, 0, kTex },
+    { "sound", "Sound", 0, 1, 0, kOffOn },
+    { "cutscenes", "Cutscenes (FMV)", 0, 1, 0, kOffOn },
+    { "simple", "Car simplification", 0, 4, 3, NULL },
+    { "yon", "Draw distance", 0, 7, 3, kYon },
+    { "lomem", "Low-memory mode", 0, 1, 1, kOffOn },
+    { "spam", "Spam frittering", 0, 1, 0, kOffOn },
+    { "physics", "Physics steps/frm", 1, 5, 3, NULL },
+    { "diag", "Diagnostics log", 0, 1, 1, kOffOn },
+};
+#define N64_OPTION_COUNT ((int)(sizeof(gN64_option_defs) / sizeof(gN64_option_defs[0])))
+
+static int gN64_option_values[N64_OPTION_COUNT];
+
+static void n64_options_defaults(void) {
+    for (int i = 0; i < N64_OPTION_COUNT; i++) {
+        gN64_option_values[i] = gN64_option_defs[i].def;
+    }
+}
+
+static void n64_options_load(void) {
+    char line[64];
+    FILE* f = fopen("OPTIONS.CFG", "rb");
+    if (f == NULL) {
+        return;
+    }
+    while (fgets(line, sizeof(line), f) != NULL) {
+        char* eq = strchr(line, '=');
+        if (eq == NULL) {
+            continue;
+        }
+        *eq = '\0';
+        for (int i = 0; i < N64_OPTION_COUNT; i++) {
+            if (strcmp(line, gN64_option_defs[i].key) == 0) {
+                int v = atoi(eq + 1);
+                if (v >= gN64_option_defs[i].min && v <= gN64_option_defs[i].max) {
+                    gN64_option_values[i] = v;
+                }
+            }
+        }
+    }
+    fclose(f);
+}
+
+static void n64_options_save(void) {
+    FILE* f = fopen("OPTIONS.CFG", "wb");
+    if (f == NULL) {
+        return;
+    }
+    for (int i = 0; i < N64_OPTION_COUNT; i++) {
+        fprintf(f, "%s=%d\n", gN64_option_defs[i].key, gN64_option_values[i]);
+    }
+    fclose(f);
+}
+
+static int n64_opt(const char* key) {
+    for (int i = 0; i < N64_OPTION_COUNT; i++) {
+        if (strcmp(key, gN64_option_defs[i].key) == 0) {
+            return gN64_option_values[i];
+        }
+    }
+    return 0;
+}
+
+// Shows the menu, then writes the matching command line into `args` (and sets the runtime options).
+void OS_N64_BootMenu(char* args, size_t size) {
+    int sel = 0;
+
+    n64_options_defaults();
+    n64_options_load();
+
+    console_init();
+    console_set_debug(false);
+    console_set_render_mode(RENDER_MANUAL);
+    joypad_init();
+
+    for (;;) {
+        console_clear();
+        printf("\n  DETHRACE N64 - debug options\n  ----------------------------\n\n");
+        for (int i = 0; i < N64_OPTION_COUNT; i++) {
+            const tN64_option* o = &gN64_option_defs[i];
+            int v = gN64_option_values[i];
+            if (o->labels) {
+                printf("  %c %-18s < %s >\n", i == sel ? '>' : ' ', o->name, o->labels[v - o->min]);
+            } else {
+                printf("  %c %-18s < %d >\n", i == sel ? '>' : ' ', o->name, v);
+            }
+        }
+        printf("\n  D-pad: choose / change\n  A or Start: launch the game\n  Z: reset to defaults\n");
+        printf("\n  RAM: %d MB%s\n", (int)(get_memory_size() / (1024 * 1024)), is_memory_expanded() ? "" : " (NO Expansion Pak!)");
+        console_render();
+
+        joypad_poll();
+        joypad_buttons_t pr = joypad_get_buttons_pressed(JOYPAD_PORT_1);
+        if (pr.d_up) {
+            sel = (sel + N64_OPTION_COUNT - 1) % N64_OPTION_COUNT;
+        } else if (pr.d_down) {
+            sel = (sel + 1) % N64_OPTION_COUNT;
+        } else if (pr.d_left || pr.d_right) {
+            const tN64_option* o = &gN64_option_defs[sel];
+            int v = gN64_option_values[sel] + (pr.d_right ? 1 : -1);
+            if (v > o->max) {
+                v = o->min;
+            } else if (v < o->min) {
+                v = o->max;
+            }
+            gN64_option_values[sel] = v;
+        } else if (pr.z) {
+            n64_options_defaults();
+        } else if (pr.a || pr.start) {
+            break;
+        }
+    }
+
+    joypad_close();
+    console_close();
+    n64_options_save();
+
+    gN64_opponent_limit = n64_opt("opponents");
+    gN64_texture_quality = n64_opt("textures");
+    gN64_physics_steps = n64_opt("physics");
+
+    snprintf(args, size, "-noreplay%s%s -simple %d -yon %s%s%s%s",
+        n64_opt("lomem") ? " -lomem" : "",
+        n64_opt("sound") ? "" : " -nosound",
+        n64_opt("simple"),
+        kYon[n64_opt("yon")],
+        n64_opt("cutscenes") ? "" : " -nocutscenes",
+        n64_opt("spam") ? " -spamfritter" : "",
+        n64_opt("diag") ? " --enable-diagnostics" : "");
+}
+
+// per-phase profiler (see DETHRACE/n64prof.h)
+uint32_t gN64_prof_ticks[8];
+static uint32_t gN64_prof_start[8];
+
+void OS_N64_ProfBegin(int bucket) {
+    gN64_prof_start[bucket] = get_ticks();
+}
+
+void OS_N64_ProfEnd(int bucket) {
+    gN64_prof_ticks[bucket] += get_ticks() - gN64_prof_start[bucket];
+}

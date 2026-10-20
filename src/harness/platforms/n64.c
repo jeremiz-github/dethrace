@@ -306,6 +306,17 @@ static void n64_report_stats(void) {
             (int)(frames * 10000.0f / (float)(now - last_report_ms)),
             (int)(mi.uordblks / 1024), (int)(get_memory_size() / 1024), gN64_fpu_fixups,
             gPad_buttons, gPad_stick_x, gPad_stick_y, (unsigned)key_state[6], (unsigned)key_state[0]);
+        {
+            // average milliseconds per frame spent in each phase of a race frame (0 outside races)
+            extern uint32_t gN64_prof_ticks[8];
+            float ms_per_tick = 1000.0f / (float)TICKS_PER_SECOND / (float)(frames ? frames : 1);
+            dr_dprintf("prof ms/frame: oppo %d phys %d cargfx %d peds %d | render %d (scene3d %d shadows %d) swap %d",
+                (int)(gN64_prof_ticks[0] * ms_per_tick), (int)(gN64_prof_ticks[1] * ms_per_tick),
+                (int)(gN64_prof_ticks[2] * ms_per_tick), (int)(gN64_prof_ticks[3] * ms_per_tick),
+                (int)(gN64_prof_ticks[4] * ms_per_tick), (int)(gN64_prof_ticks[5] * ms_per_tick),
+                (int)(gN64_prof_ticks[6] * ms_per_tick), (int)(gN64_prof_ticks[7] * ms_per_tick));
+            memset(gN64_prof_ticks, 0, sizeof(uint32_t) * 8);
+        }
         last_report_ms = now;
         frames = 0;
     }
@@ -318,6 +329,10 @@ static void N64_Harness_Swap(br_pixelmap* back_buffer) {
     int off_x, off_y;
     surface_t* disp;
 
+    {
+        extern void OS_N64_ProfBegin(int);
+        OS_N64_ProfBegin(7);
+    }
     N64_Harness_ProcessWindowMessages();
 
     last_screen_src = back_buffer;
@@ -353,6 +368,10 @@ static void N64_Harness_Swap(br_pixelmap* back_buffer) {
         }
     }
     display_show(disp);
+    {
+        extern void OS_N64_ProfEnd(int);
+        OS_N64_ProfEnd(7);
+    }
     n64_report_stats();
 }
 

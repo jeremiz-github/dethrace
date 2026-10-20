@@ -232,7 +232,12 @@ tU32 gMechanics_time_sync;
 // GLOBAL: CARM95 0x00550748
 int gNum_cars_and_non_cars;
 
+#ifdef N64
+extern int gN64_physics_steps;
+#define PHYSICS_STEP_COUNT gN64_physics_steps
+#else
 #define PHYSICS_STEP_COUNT 5
+#endif
 
 // IDA: void __usercall DamageUnit(tCar_spec *pCar@<EAX>, int pUnit_type@<EDX>, int pDamage_amount@<EBX>)
 // FUNCTION: CARM95 0x004751c0

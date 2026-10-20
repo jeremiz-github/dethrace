@@ -417,6 +417,15 @@ void SelectOpponents(tRace_info* pRace_info) {
             pRace_info->opponent_list[i].index = ChooseOpponent(nastiness, &had_scum);
             pRace_info->opponent_list[i].ranking = IRandomBetween(gProgram_state.rank - 10, gProgram_state.rank + 10);
         }
+#ifdef N64
+        {
+            // boot-menu option: fewer opponents (saves memory and CPU)
+            extern int gN64_opponent_limit;
+            if (gN64_opponent_limit >= 0 && gN64_opponent_limit < pRace_info->number_of_racers) {
+                pRace_info->number_of_racers = gN64_opponent_limit;
+            }
+        }
+#endif
     }
 }
 

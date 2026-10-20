@@ -75,6 +75,7 @@ int main(int argc, char* argv[]) {
 
 #ifdef DETHRACE_PLATFORM_N64
 #include <libdragon.h>
+#include <stdio.h>
 #include <string.h>
 
 extern void OS_N64_InitFilesystem(void);
@@ -82,6 +83,7 @@ extern void OS_N64_FixConsoleType(void);
 extern void OS_N64_ConfigureFPU(void);
 extern void OS_N64_InitDebugLogs(void);
 extern size_t OS_N64_ReadArgsFile(char* buffer, size_t size);
+extern void OS_N64_BootMenu(char* args, size_t size);
 
 // Defaults chosen to fit the N64's 4/8 MB of RAM and its CPU:
 //   -noreplay      the action replay buffer is ~14.7 MB otherwise (!)
@@ -111,9 +113,14 @@ int main(void) {
     }
 
     argv[argc++] = "dethrace";
-    n = OS_N64_ReadArgsFile(args_buf, sizeof(args_buf));
-    if (n == 0) {
-        strcpy(args_buf, N64_DEFAULT_ARGS);
+    {
+        static char menu_args[256];
+        static char file_args[200];
+        OS_N64_BootMenu(menu_args, sizeof(menu_args));
+        // an ARGS.TXT next to the DATA folder still works: its arguments are added after the menu's
+        OS_N64_ReadArgsFile(file_args, sizeof(file_args));
+        snprintf(args_buf, sizeof(args_buf), "%s %s", menu_args, file_args);
+        n = strlen(args_buf);
     }
     for (tok = strtok(args_buf, " \t\r\n"); tok != NULL && argc < 31; tok = strtok(NULL, " \t\r\n")) {
         argv[argc++] = tok;

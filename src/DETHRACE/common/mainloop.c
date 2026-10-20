@@ -1,4 +1,5 @@
 #include "mainloop.h"
+#include "n64prof.h"
 #include "brender.h"
 #include "car.h"
 #include "controls.h"
@@ -630,13 +631,13 @@ tRace_result MainGameLoop(void) {
         ResetLollipopQueue();
         MungePalette();
         if (!gAction_replay_mode) {
-            MungeOpponents(gFrame_period);
+            PROF(N64_PROF_OPPONENTS, MungeOpponents(gFrame_period));
             PollCarControls(gFrame_period);
         }
         PollCameraControls(camera_period);
         if (!gAction_replay_mode) {
-            ControlOurCar(gFrame_period);
-            ApplyPhysicsToCars(gLast_tick_count - gRace_start, gFrame_period);
+            PROF(N64_PROF_PHYSICS, ControlOurCar(gFrame_period));
+            PROF(N64_PROF_PHYSICS, ApplyPhysicsToCars(gLast_tick_count - gRace_start, gFrame_period));
             PipeCarPositions();
             NetSendMessageStacks();
             CheckRecoveryOfCars(gLast_tick_count - gRace_start + gFrame_period);
@@ -659,12 +660,12 @@ tRace_result MainGameLoop(void) {
             CheckCheckpoints();
         }
         ChangingView();
-        MungeCarGraphics(gFrame_period);
+        PROF(N64_PROF_CAR_GFX, MungeCarGraphics(gFrame_period));
         FunkThoseTronics();
         GrooveThoseDelics();
         DoWheelDamage(gFrame_period);
         CalculateFrameRate();
-        MungePedestrians(gFrame_period);
+        PROF(N64_PROF_PEDESTRIANS, MungePedestrians(gFrame_period));
         CameraBugFix(&gProgram_state.current_car, camera_period);
         if (!gAction_replay_mode) {
             MungeHeadups();
@@ -686,7 +687,7 @@ tRace_result MainGameLoop(void) {
                 EnsurePaletteUp();
             }
 #endif
-            RenderAFrame(1);
+            PROF(N64_PROF_RENDER_FRAME, RenderAFrame(1));
         }
         CheckReplayTurnOn();
         if (!gRecover_car
