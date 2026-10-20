@@ -300,6 +300,39 @@ void ClearOutStorageSpace(tBrender_storage* pStorage_space) {
     pStorage_space->models_count = 0;
 }
 
+#ifdef N64
+// The N64 only has ~6 MB of heap: halve big 8-bit textures (in place, nearest-neighbour) to make tracks fit.
+static void N64_ShrinkTexture(br_pixelmap* pm) {
+    int w = pm->width, h = pm->height, x, y;
+    unsigned char *src, *dst, *np;
+
+    if (pm->type != BR_PMT_INDEX_8 || pm->pixels == NULL || pm->mip_offset != 0 || pm->base_x != 0 || pm->base_y != 0) {
+        return;
+    }
+    if (w < 64 || h < 64 || (w & (w - 1)) != 0 || (h & (h - 1)) != 0) {
+        return;
+    }
+    np = BrResAllocate(pm, (w / 2) * (h / 2), BR_MEMORY_PIXELS);
+    if (np == NULL) {
+        return;
+    }
+    dst = np;
+    for (y = 0; y < h / 2; y++) {
+        src = (unsigned char*)pm->pixels + (y * 2) * pm->row_bytes;
+        for (x = 0; x < w / 2; x++) {
+            *dst++ = src[x * 2];
+        }
+    }
+    BrResFree(pm->pixels);
+    pm->pixels = np;
+    pm->width = w / 2;
+    pm->height = h / 2;
+    pm->row_bytes = w / 2;
+    pm->origin_x /= 2;
+    pm->origin_y /= 2;
+}
+#endif
+
 // IDA: tAdd_to_storage_result __usercall AddPixelmapToStorage@<EAX>(tBrender_storage *pStorage_space@<EAX>, br_pixelmap **pThe_pm@<EDX>)
 // This seems like the signature should be `br_pixelmap* pThe_pm`
 // FUNCTION: CARM95 0x00435014
@@ -314,6 +347,9 @@ tAdd_to_storage_result AddPixelmapToStorage(tBrender_storage* pStorage_space, br
                 return eStorage_duplicate;
             }
         }
+#ifdef N64
+        N64_ShrinkTexture(pThe_pm);
+#endif
         pStorage_space->pixelmaps[pStorage_space->pixelmaps_count] = pThe_pm;
         pStorage_space->pixelmaps_count++;
         return eStorage_allocated;
