@@ -609,6 +609,7 @@ static const tN64_option gN64_option_defs[] = {
     { "lomem", "Low-memory mode", 0, 1, 1, kOffOn },
     { "spam", "Spam frittering", 0, 1, 0, kOffOn },
     { "physics", "Physics steps/frm", 1, 5, 3, NULL },
+    { "sampler", "CPU sampler (slow)", 0, 1, 1, kOffOn },
     { "diag", "Diagnostics log", 0, 1, 1, kOffOn },
 };
 #define N64_OPTION_COUNT ((int)(sizeof(gN64_option_defs) / sizeof(gN64_option_defs[0])))
@@ -680,13 +681,13 @@ static volatile int gN64_sample_count;
 static timer_link_t* gN64_sampler_timer;
 
 static void n64_sampler_cb(int ovfl) {
-    void* buf[12];
+    void* buf[8];
     int n, k;
     (void)ovfl;
     if (gN64_sample_count >= N64_SAMPLES_MAX || !OS_N64_InRace()) {
         return;
     }
-    n = backtrace(buf, 12);
+    n = backtrace(buf, 8);
     for (k = 0; k < n; k++) {
         uint32_t a = (uint32_t)buf[k];
         if (a >= (uint32_t)inthandler && a < (uint32_t)inthandler_end) {
@@ -699,9 +700,9 @@ static void n64_sampler_cb(int ovfl) {
 }
 
 void OS_N64_SamplerStart(void) {
-    if (gN64_sampler_timer == NULL) {
+    if (gN64_sampler_timer == NULL && n64_opt("sampler")) {
         timer_init();
-        gN64_sampler_timer = new_timer(TIMER_TICKS(4000), TF_CONTINUOUS, n64_sampler_cb);
+        gN64_sampler_timer = new_timer(TIMER_TICKS(40000), TF_CONTINUOUS, n64_sampler_cb);
     }
 }
 
@@ -729,7 +730,7 @@ static void n64_sampler_frame(void* arg, backtrace_frame_t* f) {
 void OS_N64_SamplerReport(void (*print)(const char* fmt, ...)) {
     int n = gN64_sample_count, i, j, shown;
     static void* addrs[N64_SAMPLES_MAX];
-    if (n < 20) {
+    if (n < 8) {
         gN64_sample_count = 0;
         return;
     }
