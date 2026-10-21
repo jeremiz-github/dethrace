@@ -721,6 +721,51 @@ void DodgyModelUpdate(br_model* pM) {
     pM->vertices = NULL;
 }
 
+#ifdef N64
+// Memory saver: once a track model has been prepared, the post-load pass (in LoadTrack) frees its source
+// vertices/faces. Doing it right away lowers the load-time peak by ~1.5 MB. Models that may contain blended
+// faces are left alone, because StripBlendedFaces() still needs their source data.
+static void N64_EarlyFinalizeTrackModel(br_model* pModel) {
+    int i, group;
+    br_face* face;
+    br_material* material;
+    br_pixelmap* shade = NULL;
+    struct v11model* v11;
+
+    if (pModel == NULL || pModel->faces == NULL || pModel->vertices == NULL || pModel->prepared == NULL) {
+        return;
+    }
+    for (i = 0, face = pModel->faces; i < pModel->nfaces; i++, face++) {
+        if (face->material != NULL && face->material->identifier != NULL
+            && (face->material->identifier[0] == '!' || face->material->identifier[1] == '\\')) {
+            return;
+        }
+    }
+    v11 = V11MODEL(pModel);
+    for (group = 0; group < v11->ngroups; group++) {
+        material = pModel->faces[v11->groups[group].face_user[0]].material;
+        if (material && !material->index_shade) {
+            if (shade == NULL) {
+                shade = BrTableFind("DRRENDER.TAB");
+                if (shade == NULL) {
+                    return;
+                }
+            }
+        }
+    }
+    pModel->flags &= ~(BR_MODF_UPDATEABLE | BR_MODF_KEEP_ORIGINAL);
+    for (group = 0; group < v11->ngroups; group++) {
+        material = pModel->faces[v11->groups[group].face_user[0]].material;
+        v11->groups[group].user = material;
+        if (material && !material->index_shade) {
+            material->index_shade = shade;
+            BrMaterialUpdate(material, BR_MATU_ALL);
+        }
+    }
+    DodgyModelUpdate(pModel);
+}
+#endif
+
 // IDA: br_material* __usercall SuffixedMaterial@<EAX>(br_material *pOld@<EAX>, char *pSuffix@<EDX>)
 // FUNCTION: CARM95 0x00435f61
 br_material* SuffixedMaterial(br_material* pOld, char* pSuffix) {
@@ -907,6 +952,9 @@ int LoadNTrackModels(tBrender_storage* pStorage_space, FILE* pF, int pCount) {
                     }
                     RemoveDoubleSided(temp_array[j]);
                     BrModelAdd(temp_array[j]);
+#ifdef N64
+                    N64_EarlyFinalizeTrackModel(temp_array[j]);
+#endif
                     total++;
                     break;
 
