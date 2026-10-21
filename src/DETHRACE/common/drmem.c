@@ -325,8 +325,45 @@ static br_uint_32 n64_note_map(br_pixelmap* pm, void* arg) {
     return 0;
 }
 
+static struct { int bytes, nv, nf; unsigned flags; char name[24]; } gN64_big_models[10];
+static int gN64_model_total, gN64_model_kept, gN64_model_kept_bytes;
+
+static br_uint_32 n64_note_model(br_model* m, void* arg) {
+    int i, worst = 0, bytes;
+    gN64_model_total++;
+    if (m->vertices == NULL) {
+        return 0;
+    }
+    bytes = m->nvertices * (int)sizeof(br_vertex) + m->nfaces * (int)sizeof(br_face);
+    gN64_model_kept++;
+    gN64_model_kept_bytes += bytes;
+    for (i = 1; i < 10; i++) {
+        if (gN64_big_models[i].bytes < gN64_big_models[worst].bytes) {
+            worst = i;
+        }
+    }
+    if (bytes > gN64_big_models[worst].bytes) {
+        gN64_big_models[worst].bytes = bytes;
+        gN64_big_models[worst].nv = m->nvertices;
+        gN64_big_models[worst].nf = m->nfaces;
+        gN64_big_models[worst].flags = m->flags;
+        strncpy(gN64_big_models[worst].name, m->identifier ? m->identifier : "?", 23);
+        gN64_big_models[worst].name[23] = '\0';
+    }
+    return 0;
+}
+
 void OS_N64_DumpMemoryByClass(void) {
     int shown, i, best;
+    memset(gN64_big_models, 0, sizeof(gN64_big_models));
+    BrModelEnum(NULL, n64_note_model, NULL);
+    dr_dprintf("models: %d total, %d keep source data (%d KB)", gN64_model_total, gN64_model_kept, gN64_model_kept_bytes / 1024);
+    for (i = 0; i < 10; i++) {
+        if (gN64_big_models[i].bytes > 0) {
+            dr_dprintf("kept model: %s v%d f%d flags %x %d KB", gN64_big_models[i].name, gN64_big_models[i].nv,
+                gN64_big_models[i].nf, gN64_big_models[i].flags, gN64_big_models[i].bytes / 1024);
+        }
+    }
     memset(gN64_big_maps, 0, sizeof(gN64_big_maps));
     BrMapEnum(NULL, n64_note_map, NULL);
     BrTableEnum(NULL, n64_note_map, NULL);
