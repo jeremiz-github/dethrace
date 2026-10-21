@@ -3322,6 +3322,18 @@ void LoadOpponentsCars(tRace_info* pRace_info) {
     gGroove_funk_offset = GROOVE_FUNK_MAX_PER_CAR;
     for (i = 0; i < pRace_info->number_of_racers; i++) {
         PossibleService();
+#ifdef N64
+        {
+            // Not enough memory for another opponent: race with the ones already loaded
+            extern int OS_N64_HeapHeadroom(void);
+            if (i > 0 && OS_N64_HeapHeadroom() < 900 * 1024) {
+                dr_dprintf("N64: low memory (%d KB free), racing with %d opponents instead of %d",
+                    OS_N64_HeapHeadroom() / 1024, i, pRace_info->number_of_racers);
+                pRace_info->number_of_racers = i;
+                break;
+            }
+        }
+#endif
         if (pRace_info->opponent_list[i].index >= 0) {
             pRace_info->opponent_list[i].car_spec = BrMemAllocate(sizeof(tCar_spec), kMem_oppo_car_spec);
             LoadCar(

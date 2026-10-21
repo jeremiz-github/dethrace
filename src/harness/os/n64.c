@@ -22,6 +22,7 @@ bool debug_init_emulog(void);
 #include <fatfs/ff.h>
 #include <fatfs/diskio.h>
 
+#include <malloc.h>
 #include <math.h>
 #include <stdarg.h>
 #include <stdint.h>
@@ -706,7 +707,7 @@ void OS_N64_SamplerStart(void) {
     }
 }
 
-static struct { const char* name; int count; } gN64_sampler_tab[96];
+static struct { char name[40]; int count; } gN64_sampler_tab[96];
 static int gN64_sampler_tab_n;
 
 static void n64_sampler_frame(void* arg, backtrace_frame_t* f) {
@@ -721,7 +722,8 @@ static void n64_sampler_frame(void* arg, backtrace_frame_t* f) {
         }
     }
     if (gN64_sampler_tab_n < 96) {
-        gN64_sampler_tab[gN64_sampler_tab_n].name = f->func;
+        strncpy(gN64_sampler_tab[gN64_sampler_tab_n].name, f->func ? f->func : "?", 39);
+        gN64_sampler_tab[gN64_sampler_tab_n].name[39] = '\0';
         gN64_sampler_tab[gN64_sampler_tab_n].count = 1;
         gN64_sampler_tab_n++;
     }
@@ -836,4 +838,11 @@ void OS_N64_ProfBegin(int bucket) {
 
 void OS_N64_ProfEnd(int bucket) {
     gN64_prof_ticks[bucket] += get_ticks() - gN64_prof_start[bucket];
+}
+
+// Approximate free heap (bytes) before malloc fails: the arena tops out around 6.2 MB on a 8 MB console.
+int OS_N64_HeapHeadroom(void) {
+    struct mallinfo mi = mallinfo();
+    int ceiling = (int)get_memory_size() - 1850 * 1024 - 100 * 1024;
+    return ceiling - mi.uordblks;
 }
