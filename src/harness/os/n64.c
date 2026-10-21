@@ -665,6 +665,98 @@ static int n64_opt(const char* key) {
     return 0;
 }
 
+
+// ---- Sampling profiler -------------------------------------------------------------------------
+// A timer interrupt records which function was running (via libdragon's backtrace through the
+// interrupt frame). OS_N64_SamplerReport() logs the top functions, then resets.
+#include <backtrace.h>
+extern uint32_t inthandler[];
+extern uint32_t inthandler_end[];
+extern int OS_N64_InRace(void);
+
+#define N64_SAMPLES_MAX 600
+static uint32_t gN64_samples[N64_SAMPLES_MAX];
+static volatile int gN64_sample_count;
+static timer_link_t* gN64_sampler_timer;
+
+static void n64_sampler_cb(int ovfl) {
+    void* buf[12];
+    int n, k;
+    (void)ovfl;
+    if (gN64_sample_count >= N64_SAMPLES_MAX || !OS_N64_InRace()) {
+        return;
+    }
+    n = backtrace(buf, 12);
+    for (k = 0; k < n; k++) {
+        uint32_t a = (uint32_t)buf[k];
+        if (a >= (uint32_t)inthandler && a < (uint32_t)inthandler_end) {
+            break;
+        }
+    }
+    if (k + 1 < n) {
+        gN64_samples[gN64_sample_count++] = (uint32_t)buf[k + 1];
+    }
+}
+
+void OS_N64_SamplerStart(void) {
+    if (gN64_sampler_timer == NULL) {
+        timer_init();
+        gN64_sampler_timer = new_timer(TIMER_TICKS(4000), TF_CONTINUOUS, n64_sampler_cb);
+    }
+}
+
+static struct { const char* name; int count; } gN64_sampler_tab[96];
+static int gN64_sampler_tab_n;
+
+static void n64_sampler_frame(void* arg, backtrace_frame_t* f) {
+    int i;
+    if (f->is_inline) {
+        return;
+    }
+    for (i = 0; i < gN64_sampler_tab_n; i++) {
+        if (strcmp(gN64_sampler_tab[i].name, f->func) == 0) {
+            gN64_sampler_tab[i].count++;
+            return;
+        }
+    }
+    if (gN64_sampler_tab_n < 96) {
+        gN64_sampler_tab[gN64_sampler_tab_n].name = f->func;
+        gN64_sampler_tab[gN64_sampler_tab_n].count = 1;
+        gN64_sampler_tab_n++;
+    }
+}
+
+void OS_N64_SamplerReport(void (*print)(const char* fmt, ...)) {
+    int n = gN64_sample_count, i, j, shown;
+    static void* addrs[N64_SAMPLES_MAX];
+    if (n < 20) {
+        gN64_sample_count = 0;
+        return;
+    }
+    for (i = 0; i < n; i++) {
+        addrs[i] = (void*)gN64_samples[i];
+    }
+    gN64_sample_count = 0;
+    gN64_sampler_tab_n = 0;
+    for (i = 0; i < n; i++) {
+        backtrace_symbols_cb(&addrs[i], 1, 0, n64_sampler_frame, NULL);
+    }
+    for (shown = 0; shown < 8; shown++) {
+        int best = -1;
+        for (j = 0; j < gN64_sampler_tab_n; j++) {
+            if (gN64_sampler_tab[j].count > 0 && (best < 0 || gN64_sampler_tab[j].count > gN64_sampler_tab[best].count)) {
+                best = j;
+            }
+        }
+        if (best < 0) {
+            break;
+        }
+        print("sampler: %2d%% %s (%d/%d)", gN64_sampler_tab[best].count * 100 / n, gN64_sampler_tab[best].name,
+            gN64_sampler_tab[best].count, n);
+        gN64_sampler_tab[best].count = 0;
+    }
+}
+
 // Shows the menu, then writes the matching command line into `args` (and sets the runtime options).
 void OS_N64_BootMenu(char* args, size_t size) {
     int sel = 0;

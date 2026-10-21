@@ -725,44 +725,62 @@ void DodgyModelUpdate(br_model* pM) {
 // Memory saver: once a track model has been prepared, the post-load pass (in LoadTrack) frees its source
 // vertices/faces. Doing it right away lowers the load-time peak by ~1.5 MB. Models that may contain blended
 // faces are left alone, because StripBlendedFaces() still needs their source data.
+static br_material* gN64_pending_shade[512];
+static int gN64_pending_shade_count;
+int gN64_early_freed, gN64_early_blend, gN64_early_noprep;
+
 static void N64_EarlyFinalizeTrackModel(br_model* pModel) {
     int i, group;
     br_face* face;
     br_material* material;
-    br_pixelmap* shade = NULL;
+    br_pixelmap* shade;
     struct v11model* v11;
 
     if (pModel == NULL || pModel->faces == NULL || pModel->vertices == NULL || pModel->prepared == NULL) {
+        gN64_early_noprep++;
         return;
     }
     for (i = 0, face = pModel->faces; i < pModel->nfaces; i++, face++) {
         if (face->material != NULL && face->material->identifier != NULL
-            && (face->material->identifier[0] == '!' || face->material->identifier[1] == '\\')) {
+            && ((face->material->identifier[0] == '!' && face->material->identifier[1] != '!')
+                || face->material->identifier[1] == '\\')) {
+            gN64_early_blend++;
             return;
         }
     }
     v11 = V11MODEL(pModel);
-    for (group = 0; group < v11->ngroups; group++) {
-        material = pModel->faces[v11->groups[group].face_user[0]].material;
-        if (material && !material->index_shade) {
-            if (shade == NULL) {
-                shade = BrTableFind("DRRENDER.TAB");
-                if (shade == NULL) {
-                    return;
-                }
-            }
-        }
-    }
     pModel->flags &= ~(BR_MODF_UPDATEABLE | BR_MODF_KEEP_ORIGINAL);
+    shade = BrTableFind("DRRENDER.TAB");
     for (group = 0; group < v11->ngroups; group++) {
         material = pModel->faces[v11->groups[group].face_user[0]].material;
         v11->groups[group].user = material;
         if (material && !material->index_shade) {
-            material->index_shade = shade;
-            BrMaterialUpdate(material, BR_MATU_ALL);
+            if (shade != NULL) {
+                material->index_shade = shade;
+                BrMaterialUpdate(material, BR_MATU_ALL);
+            } else if (gN64_pending_shade_count < 512) {
+                gN64_pending_shade[gN64_pending_shade_count++] = material;
+            }
         }
     }
     DodgyModelUpdate(pModel);
+    gN64_early_freed++;
+}
+
+// Called once the post-load pass is done: settle materials that had no shade table at model-load time.
+static void N64_FlushPendingShade(void) {
+    int i;
+    br_pixelmap* shade = BrTableFind("DRRENDER.TAB");
+    for (i = 0; i < gN64_pending_shade_count; i++) {
+        if (shade != NULL && !gN64_pending_shade[i]->index_shade) {
+            gN64_pending_shade[i]->index_shade = shade;
+            BrMaterialUpdate(gN64_pending_shade[i], BR_MATU_ALL);
+        }
+    }
+    dr_dprintf("early model free: %d freed, %d kept (blend), %d kept (no prepared data), %d pending shade",
+        gN64_early_freed, gN64_early_blend, gN64_early_noprep, gN64_pending_shade_count);
+    gN64_pending_shade_count = 0;
+    gN64_early_freed = gN64_early_blend = gN64_early_noprep = 0;
 }
 #endif
 
@@ -2890,6 +2908,9 @@ void LoadTrack(char* pFile_name, tTrack_spec* pTrack_spec, tRace_info* pRace_inf
             DodgyModelUpdate(gTrack_storage_space.models[i]);
         }
     }
+#ifdef N64
+    N64_FlushPendingShade();
+#endif
     PrintMemoryDump(0, "JUST LOADED IN TRACK ACTOR AND PROCESSED COLUMNS");
     gTrack_actor = pTrack_spec->the_actor;
     if (!gRendering_accessories && !gNet_mode) {

@@ -317,6 +317,12 @@ static void n64_report_stats(void) {
                 (int)(gN64_prof_ticks[6] * ms_per_tick), (int)(gN64_prof_ticks[7] * ms_per_tick));
             memset(gN64_prof_ticks, 0, sizeof(uint32_t) * 8);
         }
+        {
+            extern void OS_N64_SamplerStart(void);
+            extern void OS_N64_SamplerReport(void (*print)(const char* fmt, ...));
+            OS_N64_SamplerStart();
+            OS_N64_SamplerReport(dr_dprintf);
+        }
         last_report_ms = now;
         frames = 0;
     }
