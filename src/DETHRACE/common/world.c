@@ -927,6 +927,43 @@ void ProcessModelFaceMaterials(br_model* pModel, tPMFMCB pCallback) {
     }
 }
 
+#ifdef N64
+typedef struct {
+    tBrender_storage* storage;
+    int added;
+} tN64_track_load_ctx;
+
+// Track models are handled one by one as they are read, so the whole model file never sits in memory.
+static void N64_TrackModelCB(br_model* pModel, void* pArg) {
+    tN64_track_load_ctx* ctx = (tN64_track_load_ctx*)pArg;
+
+    switch (AddModelToStorage(ctx->storage, pModel)) {
+    case eStorage_allocated:
+        pModel->flags |= BR_MODF_UPDATEABLE;
+        if (gRoad_texturing_level == eRTL_none) {
+            ProcessModelFaceMaterials(pModel, RoadPerspToUntex);
+        }
+        if (gWall_texturing_level == eWTL_linear) {
+            ProcessModelFaceMaterials(pModel, WallPerspToLinear);
+        }
+        if (gWall_texturing_level == eWTL_none) {
+            ProcessModelFaceMaterials(pModel, WallPerspToUntex);
+        }
+        RemoveDoubleSided(pModel);
+        BrModelAdd(pModel);
+        N64_EarlyFinalizeTrackModel(pModel);
+        ctx->added++;
+        break;
+    case eStorage_duplicate:
+        BrModelFree(pModel);
+        break;
+    case eStorage_not_enough_room:
+        FatalError(kFatalError_InsufficientModelSlots);
+        break;
+    }
+}
+#endif
+
 // IDA: int __usercall LoadNTrackModels@<EAX>(tBrender_storage *pStorage_space@<EAX>, FILE *pF@<EDX>, int pCount@<EBX>)
 // FUNCTION: CARM95 0x00436325
 int LoadNTrackModels(tBrender_storage* pStorage_space, FILE* pF, int pCount) {
@@ -947,6 +984,19 @@ int LoadNTrackModels(tBrender_storage* pStorage_space, FILE* pF, int pCount) {
         str = strtok(s, "\t ,/");
         PathCat(the_path, gApplication_path, "MODELS");
         PathCat(the_path, the_path, str);
+#ifdef N64
+        {
+            tN64_track_load_ctx ctx;
+            ctx.storage = pStorage_space;
+            ctx.added = 0;
+            new_ones = BrModelLoadManyCB(the_path, N64_TrackModelCB, &ctx);
+            if (new_ones == 0) {
+                FatalError(kFatalError_LoadModelFile_S, str);
+            }
+            total += ctx.added;
+            continue;
+        }
+#endif
         new_ones = BrModelLoadMany(the_path, temp_array, COUNT_OF(temp_array));
         if (new_ones == 0) {
             FatalError(kFatalError_LoadModelFile_S, str);
