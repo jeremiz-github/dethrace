@@ -729,24 +729,17 @@ static br_material* gN64_pending_shade[512];
 static int gN64_pending_shade_count;
 int gN64_early_freed, gN64_early_blend, gN64_early_noprep;
 
-static void N64_EarlyFinalizeTrackModel(br_model* pModel) {
-    int i, group;
-    br_face* face;
+// Frees a prepared track model's source vertices/faces (the post-load pass would do it later anyway).
+// Needs prepared data to exist.
+void N64_FinalizeTrackModel(br_model* pModel) {
+    int group;
     br_material* material;
     br_pixelmap* shade;
     struct v11model* v11;
 
-    if (pModel == NULL || pModel->faces == NULL || pModel->vertices == NULL || pModel->prepared == NULL) {
-        gN64_early_noprep++;
+    if (pModel == NULL || pModel->faces == NULL || pModel->vertices == NULL || pModel->prepared == NULL
+        || !(pModel->flags & (BR_MODF_UPDATEABLE | BR_MODF_KEEP_ORIGINAL))) {
         return;
-    }
-    for (i = 0, face = pModel->faces; i < pModel->nfaces; i++, face++) {
-        if (face->material != NULL && face->material->identifier != NULL
-            && ((face->material->identifier[0] == '!' && face->material->identifier[1] != '!')
-                || face->material->identifier[1] == '\\')) {
-            gN64_early_blend++;
-            return;
-        }
     }
     v11 = V11MODEL(pModel);
     pModel->flags &= ~(BR_MODF_UPDATEABLE | BR_MODF_KEEP_ORIGINAL);
@@ -765,6 +758,29 @@ static void N64_EarlyFinalizeTrackModel(br_model* pModel) {
     }
     DodgyModelUpdate(pModel);
     gN64_early_freed++;
+}
+
+static void N64_EarlyFinalizeTrackModel(br_model* pModel) {
+    int i;
+    br_face* face;
+
+    if (pModel == NULL || pModel->faces == NULL || pModel->vertices == NULL || pModel->prepared == NULL) {
+        gN64_early_noprep++;
+        return;
+    }
+    for (i = 0, face = pModel->faces; i < pModel->nfaces; i++, face++) {
+        if (face->material != NULL && face->material->identifier != NULL
+            && ((face->material->identifier[0] == '!' && face->material->identifier[1] != '!')
+                || face->material->identifier[1] == '\\')) {
+            // Blended faces get split off later (StripBlendedFaces), which rebuilds the prepared data and
+            // then frees the source data. Until then keep only the source: drop the prepared copy.
+            BrResFree(pModel->prepared);
+            pModel->prepared = NULL;
+            gN64_early_blend++;
+            return;
+        }
+    }
+    N64_FinalizeTrackModel(pModel);
 }
 
 // Called once the post-load pass is done: settle materials that had no shade table at model-load time.
@@ -2945,6 +2961,11 @@ void LoadTrack(char* pFile_name, tTrack_spec* pTrack_spec, tRace_info* pRace_inf
         PossibleService();
         needs_updating = 0;
         if (gTrack_storage_space.models[i] && gTrack_storage_space.models[i]->flags & (BR_MODF_UPDATEABLE | BR_MODF_KEEP_ORIGINAL)) {
+#ifdef N64
+            if (gTrack_storage_space.models[i]->prepared == NULL && gTrack_storage_space.models[i]->faces != NULL) {
+                BrModelUpdate(gTrack_storage_space.models[i], BR_MODU_ALL);
+            }
+#endif
             gTrack_storage_space.models[i]->flags &= ~(BR_MODF_UPDATEABLE | BR_MODF_KEEP_ORIGINAL);
             // Minor asm differences here due to using open-sourced BRender 1.3.2
             for (group = 0; group < V11MODEL(gTrack_storage_space.models[i])->ngroups; group++) {

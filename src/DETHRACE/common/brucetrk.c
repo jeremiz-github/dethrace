@@ -155,6 +155,17 @@ void StripBlendedFaces(br_actor* pActor, br_model* pModel) {
             pActor->type = BR_ACTOR_NONE;
         }
     }
+#ifdef N64
+    // Done splitting this model: rebuild its prepared data if needed, then drop the source data now
+    // rather than at the end of track loading.
+    if (pActor->model == pModel && pModel->faces != NULL && pModel->nfaces != 0) {
+        extern void N64_FinalizeTrackModel(br_model * pModel);
+        if (pModel->prepared == NULL) {
+            BrModelUpdate(pModel, BR_MODU_ALL);
+        }
+        N64_FinalizeTrackModel(pModel);
+    }
+#endif
 }
 
 // IDA: br_uint_32 __cdecl FindNonCarsCB(br_actor *pActor, tTrack_spec *pTrack_spec)
