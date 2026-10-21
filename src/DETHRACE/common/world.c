@@ -338,6 +338,13 @@ extern int gN64_texture_quality;
 
 static void N64_ShrinkTexture(br_pixelmap* pm) {
     int level;
+    if (gN64_texture_quality == 3) {
+        // "256px only": the biggest textures (256x256 and up) are halved once, smaller ones are untouched
+        if (pm->width >= 256 && pm->height >= 256) {
+            N64_HalveTexture(pm);
+        }
+        return;
+    }
     for (level = 0; level < gN64_texture_quality; level++) {
         if (!N64_HalveTexture(pm)) {
             break;
