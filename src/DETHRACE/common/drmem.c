@@ -356,6 +356,7 @@ static br_uint_32 n64_note_model(br_model* m, void* arg) {
 void OS_N64_DumpMemoryByClass(void) {
     int shown, i, best;
     memset(gN64_big_models, 0, sizeof(gN64_big_models));
+    gN64_model_total = gN64_model_kept = gN64_model_kept_bytes = 0;
     BrModelEnum(NULL, n64_note_model, NULL);
     dr_dprintf("models: %d total, %d keep source data (%d KB)", gN64_model_total, gN64_model_kept, gN64_model_kept_bytes / 1024);
     for (i = 0; i < 10; i++) {

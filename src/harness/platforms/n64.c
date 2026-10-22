@@ -318,6 +318,21 @@ static void n64_report_stats(void) {
             memset(gN64_prof_ticks, 0, sizeof(uint32_t) * 8);
         }
         {
+            // once per race: full memory breakdown by class, to guide memory optimisation
+            extern int OS_N64_InRace(void);
+            extern void OS_N64_DumpMemoryByClass(void);
+            static int dumped = 0;
+            if (OS_N64_InRace()) {
+                if (!dumped && now > 0) {
+                    dumped = 1;
+                    dr_dprintf("memory breakdown at race start:");
+                    OS_N64_DumpMemoryByClass();
+                }
+            } else {
+                dumped = 0;
+            }
+        }
+        {
             extern void OS_N64_SamplerStart(void);
             extern void OS_N64_SamplerReport(void (*print)(const char* fmt, ...));
             OS_N64_SamplerStart();
