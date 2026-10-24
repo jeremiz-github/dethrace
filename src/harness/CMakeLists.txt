@@ -78,7 +78,7 @@ else()
 endif()
 
 if(DETHRACE_PLATFORM_N64)
-    target_sources(harness PRIVATE platforms/n64.c)
+    target_sources(harness PRIVATE platforms/n64.c platforms/n64_rdp.c)
     target_compile_definitions(harness PRIVATE DETHRACE_PLATFORM_N64)
 endif()
 

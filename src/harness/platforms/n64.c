@@ -27,6 +27,14 @@ extern void QuitGame(void);
 static uint16_t converted_palette[256];
 static br_uint_32 key_state[8];
 static void (*gKeyHandler_func)(void) = NULL;
+
+extern int gN64_use_rdp;
+extern void* gN64_screen_base;
+extern int gN64_screen_w, gN64_screen_h, gN64_screen_stride;
+extern void N64_Rdp_PaletteChanged(const uint16_t* pal5551);
+extern int N64_Rdp_FrameActive(void);
+extern void N64_Rdp_FrameDone(void);
+extern const uint16_t* N64_Rdp_Row(int y);
 static br_pixelmap* last_screen_src = NULL;
 static int video_ready = 0;
 
@@ -277,6 +285,9 @@ static void N64_Harness_CreateWindow(const char* title, int width, int height, t
     }
     display_init(RESOLUTION_320x240, DEPTH_16_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
     joypad_init();
+    if (gN64_use_rdp) {
+        rdpq_init();
+    }
     video_ready = 1;
 }
 
@@ -288,6 +299,7 @@ static void N64_Harness_PaletteChanged(br_colour entries[256]) {
             | ((BR_BLU(entries[i]) >> 3) << 1)
             | 1);
     }
+    N64_Rdp_PaletteChanged(converted_palette);
 }
 
 // Once per ~2 s, log the frame rate and heap usage (visible through the SC64 USB log / ISViewer).
@@ -349,6 +361,7 @@ static void N64_Harness_Swap(br_pixelmap* back_buffer) {
     int step;
     int off_x, off_y;
     surface_t* disp;
+    int use_rdp;
 
     {
         extern void OS_N64_ProfBegin(int);
@@ -357,6 +370,10 @@ static void N64_Harness_Swap(br_pixelmap* back_buffer) {
     N64_Harness_ProcessWindowMessages();
 
     last_screen_src = back_buffer;
+    gN64_screen_base = back_buffer->pixels;
+    gN64_screen_w = back_buffer->width;
+    gN64_screen_h = back_buffer->height;
+    gN64_screen_stride = back_buffer->row_bytes;
     disp = display_get();
 
     // 320x200 (low-res, the default here) is copied 1:1; 640x480 is decimated 2:1.
@@ -373,12 +390,25 @@ static void N64_Harness_Swap(br_pixelmap* back_buffer) {
     off_x = ((N64_SCREEN_W - out_w) / 2) & ~1;
     off_y = (N64_SCREEN_H - out_h) / 2;
 
+    use_rdp = N64_Rdp_FrameActive() && back_buffer->width == 320 && back_buffer->height == 200;
+    if (use_rdp) {
+        N64_Rdp_FrameDone();
+    } else {
+        N64_Rdp_FrameDone();
+    }
     // The display buffer is uncached RDRAM: write two RGBA5551 pixels per 32-bit store
     for (y = 0; y < out_h; y++) {
         const uint8_t* src = (const uint8_t*)back_buffer->pixels + (size_t)(y * step) * back_buffer->row_bytes;
         uint32_t* dst = (uint32_t*)((uint8_t*)disp->buffer + (size_t)(y + off_y) * disp->stride) + (off_x >> 1);
 
-        if (step == 1) {
+        if (step == 1 && use_rdp) {
+            const uint16_t* r3d = N64_Rdp_Row(y);
+            for (x = 0; x < out_w; x += 2) {
+                uint16_t p0 = src[x] ? converted_palette[src[x]] : r3d[x];
+                uint16_t p1 = src[x + 1] ? converted_palette[src[x + 1]] : r3d[x + 1];
+                *dst++ = ((uint32_t)p0 << 16) | p1;
+            }
+        } else if (step == 1) {
             for (x = 0; x < out_w; x += 2) {
                 *dst++ = ((uint32_t)converted_palette[src[x]] << 16) | converted_palette[src[x + 1]];
             }

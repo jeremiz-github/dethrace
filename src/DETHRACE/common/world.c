@@ -336,8 +336,56 @@ static int N64_HalveTexture(br_pixelmap* pm) {
 // Boot-menu option (0 = full quality, 1 = half, 2 = quarter size for the biggest textures).
 extern int gN64_texture_quality;
 
+extern int gN64_use_rdp;
+
+// RDP: a texture must fit in half of TMEM (2 KB, the other half holds the palette).
+static void N64_FitTexture(br_pixelmap* pm) {
+    int w = pm->width, h = pm->height, nw, nh, x, y;
+    unsigned char *np, *dst;
+
+    if (pm->type != BR_PMT_INDEX_8 || pm->pixels == NULL || pm->mip_offset != 0 || pm->base_x != 0 || pm->base_y != 0) {
+        return;
+    }
+    if ((w & (w - 1)) != 0 || (h & (h - 1)) != 0 || w * h <= 2048) {
+        return;
+    }
+    nw = w;
+    nh = h;
+    while (nw * nh > 2048) {
+        if (nw >= nh && nw > 8) {
+            nw /= 2;
+        } else if (nh > 1) {
+            nh /= 2;
+        } else {
+            return;
+        }
+    }
+    np = BrResAllocate(pm, nw * nh, BR_MEMORY_PIXELS);
+    if (np == NULL) {
+        return;
+    }
+    dst = np;
+    for (y = 0; y < nh; y++) {
+        const unsigned char* src = (const unsigned char*)pm->pixels + (y * (h / nh)) * pm->row_bytes;
+        for (x = 0; x < nw; x++) {
+            *dst++ = src[x * (w / nw)];
+        }
+    }
+    BrResFree(pm->pixels);
+    pm->pixels = np;
+    pm->width = nw;
+    pm->height = nh;
+    pm->row_bytes = nw;
+    pm->origin_x = pm->origin_x * nw / w;
+    pm->origin_y = pm->origin_y * nh / h;
+}
+
 static void N64_ShrinkTexture(br_pixelmap* pm) {
     int level;
+    if (gN64_use_rdp) {
+        N64_FitTexture(pm);
+        return;
+    }
     if (gN64_texture_quality == 3) {
         // "256px only": the biggest textures (256x256 and up) are halved once, smaller ones are untouched
         if (pm->width >= 256 && pm->height >= 256) {

@@ -598,6 +598,7 @@ typedef struct {
 
 static const char* const kOffOn[] = { "Off", "On" };
 static const char* const kTex[] = { "Full", "Half", "Quarter", "Half (256px only)" };
+static const char* const kRenderer[] = { "Software", "RDP (hardware)" };
 static const char* const kYon[] = { "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "1.0" };
 
 static const tN64_option gN64_option_defs[] = {
@@ -612,6 +613,7 @@ static const tN64_option gN64_option_defs[] = {
     { "physics", "Physics steps/frm", 1, 5, 3, NULL },
     { "sampler", "CPU sampler (slow)", 0, 1, 1, kOffOn },
     { "diag", "Diagnostics log", 0, 1, 1, kOffOn },
+    { "renderer", "Renderer", 0, 1, 1, kRenderer },
 };
 #define N64_OPTION_COUNT ((int)(sizeof(gN64_option_defs) / sizeof(gN64_option_defs[0])))
 
@@ -816,6 +818,10 @@ void OS_N64_BootMenu(char* args, size_t size) {
 
     gN64_opponent_limit = n64_opt("opponents");
     gN64_texture_quality = n64_opt("textures");
+    {
+        extern int gN64_use_rdp;
+        gN64_use_rdp = n64_opt("renderer");
+    }
     gN64_physics_steps = n64_opt("physics");
 
     snprintf(args, size, "-noreplay%s%s -simple %d -yon %s%s%s%s",
