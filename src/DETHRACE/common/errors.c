@@ -236,6 +236,16 @@ void dr_dprintf(char* fmt_string, ...) {
     va_list args;
     tU32 the_time;
 
+#ifdef N64
+    {
+        // mirror to the USB / emulator debug log (sc64deployer debug)
+        extern void debugf_n64_line(const char* fmt, va_list ap);
+        va_list ap2;
+        va_start(ap2, fmt_string);
+        debugf_n64_line(fmt_string, ap2);
+        va_end(ap2);
+    }
+#endif
     if (harness_game_config.enable_diagnostics == 0) {
         return;
     }

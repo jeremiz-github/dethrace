@@ -877,3 +877,9 @@ void __wrap_debug_assert_func_f(const char* file, int line, const char* func, co
     }
     __real_debug_assert_func_f(file, line, func, failedexpr, "%s", text);
 }
+
+void debugf_n64_line(const char* fmt, va_list ap) {
+    char line[256];
+    vsnprintf(line, sizeof(line), fmt, ap);
+    fprintf(stderr, "%s\n", line);
+}
