@@ -852,3 +852,28 @@ int OS_N64_HeapHeadroom(void) {
     int ceiling = (int)get_memory_size() - 1850 * 1024 - 100 * 1024;
     return ceiling - mi.uordblks;
 }
+
+
+// Save libdragon assertion messages to ASSERT.TXT (next to DIAGNOST.TXT) before the red error screen appears.
+#include <stdarg.h>
+extern void __real_debug_assert_func_f(const char* file, int line, const char* func, const char* failedexpr, const char* msg, ...);
+void __wrap_debug_assert_func_f(const char* file, int line, const char* func, const char* failedexpr, const char* msg, ...) {
+    char text[384];
+    char all[512];
+    va_list ap;
+    FILE* f;
+    va_start(ap, msg);
+    if (msg != NULL) {
+        vsnprintf(text, sizeof(text), msg, ap);
+    } else {
+        text[0] = 0;
+    }
+    va_end(ap);
+    snprintf(all, sizeof(all), "ASSERT %s:%d (%s) [%s] %s\n", file ? file : "?", line, func ? func : "?", failedexpr ? failedexpr : "", text);
+    f = fopen("ASSERT.TXT", "ab");
+    if (f != NULL) {
+        fputs(all, f);
+        fclose(f);
+    }
+    __real_debug_assert_func_f(file, line, func, failedexpr, "%s", text);
+}
