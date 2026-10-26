@@ -38,6 +38,11 @@ static int rdp_bad_tex_logged = 0;
 
 int gN64_rdp_tris = 0; // statistics: triangles sent to the RDP in the last frame
 
+#include <stdio.h>
+static int rdp_log_budget = 200;
+#define RDPLOG(...) do { if (rdp_log_budget > 0) { rdp_log_budget--; fprintf(stderr, "rdp: " __VA_ARGS__); fputc(10, stderr); } } while (0)
+static int rdp_bounce_count = 0;
+
 #define SCREEN_W 320
 #define SCREEN_H 200
 
@@ -154,6 +159,7 @@ int N64_Rdp_BeginScene(void* pixels, int row_bytes, int w, int h) {
     }
     rdp_tex_ptr = NULL; // textures may have been modified since the last scene
     rdp_have_frame = 1;
+    RDPLOG("begin scene at %d,%d size %dx%d (surfaces %p %p) tris so far %d", ox, oy, w, h, rdp_color.buffer, rdp_zbuf.buffer, gN64_rdp_tris);
     return 1;
 }
 
@@ -186,6 +192,7 @@ int N64_Rdp_SetTexture(const uint8_t* px, int w, int h, int row_bytes) {
         }
         src = rdp_bounce;
         stride = w;
+        rdp_bounce_count++;
     }
     data_cache_hit_writeback((void*)src, stride * h);
     {
@@ -256,8 +263,10 @@ void N64_Rdp_EndScene(uint8_t* pixels, int row_bytes, int w, int h) {
     if (!rdp_attached) {
         return;
     }
+    RDPLOG("end scene: %d tris, %d bounced textures; waiting for RDP", gN64_rdp_tris, rdp_bounce_count);
     rdpq_detach_wait();
     rdp_attached = 0;
+    RDPLOG("end scene: RDP done");
     data_cache_hit_invalidate(rdp_color.buffer, rdp_color.stride * SCREEN_H);
 
     for (y = 0; y < h; y++) {
@@ -291,6 +300,8 @@ const uint16_t* N64_Rdp_Row(int y) {
 }
 
 void N64_Rdp_FrameDone(void) {
+    RDPLOG("frame done (attached %d, tris %d)", rdp_attached, gN64_rdp_tris);
+    gN64_rdp_tris = 0;
     if (rdp_attached) {
         rdpq_detach_wait();
         rdp_attached = 0;
