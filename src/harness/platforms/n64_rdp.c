@@ -263,11 +263,24 @@ void N64_Rdp_EndScene(uint8_t* pixels, int row_bytes, int w, int h) {
     if (!rdp_attached) {
         return;
     }
-    RDPLOG("end scene: %d tris, %d bounced textures; waiting for RDP", gN64_rdp_tris, rdp_bounce_count);
-    rdpq_detach_wait();
-    rdp_attached = 0;
-    RDPLOG("end scene: RDP done");
-    data_cache_hit_invalidate(rdp_color.buffer, rdp_color.stride * SCREEN_H);
+    {
+        volatile uint32_t canary[16];
+        int ci;
+        for (ci = 0; ci < 16; ci++) {
+            canary[ci] = 0xC0DE0000u + ci;
+        }
+        RDPLOG("end scene: %d tris, %d bounced textures; waiting for RDP (sp~%p)", gN64_rdp_tris, rdp_bounce_count, (void*)canary);
+        rdpq_detach_wait();
+        rdp_attached = 0;
+        for (ci = 0; ci < 16; ci++) {
+            if (canary[ci] != 0xC0DE0000u + ci) {
+                RDPLOG("STACK CORRUPTED by detach/wait: canary[%d]=%08x", ci, (unsigned)canary[ci]);
+                break;
+            }
+        }
+        RDPLOG("end scene: RDP done");
+    }
+    // the surface lives in uncached RAM (UncachedAddr below): no cache maintenance needed
 
     for (y = 0; y < h; y++) {
         int sy = rdp_oy + y;
@@ -277,7 +290,7 @@ void N64_Rdp_EndScene(uint8_t* pixels, int row_bytes, int w, int h) {
         if (sy < 0 || sy >= SCREEN_H) {
             continue;
         }
-        src = (const uint16_t*)((uint8_t*)rdp_color.buffer + (size_t)sy * rdp_color.stride) + rdp_ox;
+        src = (const uint16_t*)((uint8_t*)UncachedAddr(rdp_color.buffer) + (size_t)sy * rdp_color.stride) + rdp_ox;
         if (rdp_ox + n > SCREEN_W) {
             n = SCREEN_W - rdp_ox;
         }
@@ -296,11 +309,13 @@ int N64_Rdp_FrameActive(void) {
 
 // Pixel (x,y) of the RDP layer, RGBA5551
 const uint16_t* N64_Rdp_Row(int y) {
-    return (const uint16_t*)((uint8_t*)rdp_color.buffer + (size_t)y * rdp_color.stride);
+    return (const uint16_t*)((uint8_t*)UncachedAddr(rdp_color.buffer) + (size_t)y * rdp_color.stride);
 }
 
 void N64_Rdp_FrameDone(void) {
-    RDPLOG("frame done (attached %d, tris %d)", rdp_attached, gN64_rdp_tris);
+    if (rdp_attached || gN64_rdp_tris) {
+        RDPLOG("frame done (attached %d, tris %d)", rdp_attached, gN64_rdp_tris);
+    }
     gN64_rdp_tris = 0;
     if (rdp_attached) {
         rdpq_detach_wait();
