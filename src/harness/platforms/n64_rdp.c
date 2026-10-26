@@ -8,6 +8,7 @@
 #include <libdragon.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdlib.h>
 
 int gN64_use_rdp = 0; // boot-menu option "Renderer"
 
@@ -42,6 +43,8 @@ int gN64_rdp_tris = 0; // statistics: triangles sent to the RDP in the last fram
 static int rdp_log_budget = 200;
 #define RDPLOG(...) do { if (rdp_log_budget > 0) { rdp_log_budget--; fprintf(stderr, "rdp: " __VA_ARGS__); fputc(10, stderr); } } while (0)
 static int rdp_bounce_count = 0;
+static uint8_t* rdp_snap = NULL; // 8-bit viewport as it was when the scene started (to detect software-drawn pixels)
+static int rdp_snap_w, rdp_snap_h;
 
 #define SCREEN_W 320
 #define SCREEN_H 200
@@ -128,6 +131,17 @@ int N64_Rdp_BeginScene(void* pixels, int row_bytes, int w, int h) {
         return 0;
     }
     if (!rdp_attached) {
+        if (rdp_snap == NULL) {
+            rdp_snap = (uint8_t*)malloc(SCREEN_W * SCREEN_H);
+        }
+        if (rdp_snap != NULL) {
+            int yy;
+            rdp_snap_w = w;
+            rdp_snap_h = h;
+            for (yy = 0; yy < h; yy++) {
+                memcpy(rdp_snap + (size_t)yy * w, (uint8_t*)pixels + (size_t)yy * row_bytes, w);
+            }
+        }
         if (!rdp_cleared) {
             rdpq_attach(&rdp_color, &rdp_zbuf);
             // colour cleared to 0x0000 (alpha bit 0 = "not covered"), z to the far plane
@@ -294,9 +308,19 @@ void N64_Rdp_EndScene(uint8_t* pixels, int row_bytes, int w, int h) {
         if (rdp_ox + n > SCREEN_W) {
             n = SCREEN_W - rdp_ox;
         }
-        for (x = 0; x < n; x++) {
-            if (src[x] & 1) {
-                dst[x] = 0;
+        if (rdp_snap != NULL && w == rdp_snap_w && h == rdp_snap_h) {
+            const uint8_t* old = rdp_snap + (size_t)y * w;
+            // pixels changed by software drawing during the scene (sprites, smoke...) stay on top
+            for (x = 0; x < n; x++) {
+                if ((src[x] & 1) && dst[x] == old[x]) {
+                    dst[x] = 0;
+                }
+            }
+        } else {
+            for (x = 0; x < n; x++) {
+                if (src[x] & 1) {
+                    dst[x] = 0;
+                }
             }
         }
     }
