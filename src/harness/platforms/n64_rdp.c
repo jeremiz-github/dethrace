@@ -310,8 +310,19 @@ void N64_Rdp_EndScene(uint8_t* pixels, int row_bytes, int w, int h) {
         }
         if (rdp_snap != NULL && w == rdp_snap_w && h == rdp_snap_h) {
             const uint8_t* old = rdp_snap + (size_t)y * w;
+            x = 0;
+            if ((rdp_ox & 1) == 0) {
+                const uint32_t* s32 = (const uint32_t*)src; // two pixels per uncached read
+                for (; x + 1 < n; x += 2) {
+                    uint32_t v = *s32++;
+                    if (v & 0x00010001u) {
+                        if ((v & 0x00010000u) && dst[x] == old[x]) dst[x] = 0;
+                        if ((v & 1u) && dst[x + 1] == old[x + 1]) dst[x + 1] = 0;
+                    }
+                }
+            }
             // pixels changed by software drawing during the scene (sprites, smoke...) stay on top
-            for (x = 0; x < n; x++) {
+            for (; x < n; x++) {
                 if ((src[x] & 1) && dst[x] == old[x]) {
                     dst[x] = 0;
                 }

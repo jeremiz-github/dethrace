@@ -377,6 +377,35 @@ static void n64_fpu_exception(exception_t* ex) {
             return;
         }
     }
+    if (ex->code == EXCEPTION_CODE_FLOATING_POINT && !(r->cr & 0x80000000u)) {
+        // Arithmetic on a denormal operand: the VR4300 cannot do it. Flush denormal operands to zero and retry.
+        uint32_t insn = *(volatile uint32_t*)(uintptr_t)r->epc;
+        uint32_t fmt = (insn >> 21) & 0x1F;
+        uint32_t fs = (insn >> 11) & 0x1F;
+        uint32_t ft = (insn >> 16) & 0x1F;
+        if ((insn >> 26) == 0x11 && (fmt == 16 || fmt == 17)) {
+            int flushed = 0;
+            uint32_t regs[2] = { fs, ft };
+            for (int i = 0; i < 2; i++) {
+                uint64_t v = r->fpr[regs[i]];
+                if (fmt == 16) {
+                    uint32_t b = (uint32_t)v;
+                    if ((b & 0x7F800000u) == 0 && (b & 0x007FFFFFu) != 0) {
+                        r->fpr[regs[i]] = 0;
+                        flushed = 1;
+                    }
+                } else if ((v & 0x7FF0000000000000ull) == 0 && (v & 0x000FFFFFFFFFFFFFull) != 0) {
+                    r->fpr[regs[i]] = 0;
+                    flushed = 1;
+                }
+            }
+            if (flushed) {
+                r->fc31 &= ~C1_CAUSE_MASK;
+                gN64_fpu_fixups++;
+                return; // re-execute the instruction
+            }
+        }
+    }
     if (gN64_prev_exception_handler != NULL) {
         gN64_prev_exception_handler(ex);
     }
