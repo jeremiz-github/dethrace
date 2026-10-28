@@ -425,6 +425,7 @@ static void N64_ShrinkTexture(br_pixelmap* pm) {
     int level;
     if (gN64_use_rdp) {
         N64_FitTexture(pm);
+        N64_ShrinkSprite(pm); // non power-of-two ones (pedestrian frames...)
         return;
     }
     if (gN64_texture_quality == 3) {
