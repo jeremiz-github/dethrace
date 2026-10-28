@@ -18,6 +18,7 @@ cmake -S "$SRC" -B "$BUILD" \
     -DCMAKE_TOOLCHAIN_FILE="$SRC/cmake/n64-libdragon-toolchain.cmake" \
     -DDETHRACE_PLATFORM_N64=ON \
     -DCMAKE_BUILD_TYPE=Release \
+    -DCMAKE_C_FLAGS_RELEASE="${N64_C_OPT:--Os -DNDEBUG}" \
     -DBRENDER_BUILD_EXAMPLES=OFF \
     -DBRENDER_BUILD_TOOLS=OFF
 cmake --build "$BUILD" -j"$(nproc)"

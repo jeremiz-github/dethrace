@@ -1,5 +1,6 @@
 #include "world.h"
 #include <stdlib.h>
+#include <math.h>
 
 #include "brender.h"
 #include "brucetrk.h"
@@ -369,6 +370,46 @@ static void N64_FitTexture(br_pixelmap* pm) {
         const unsigned char* src = (const unsigned char*)pm->pixels + (y * (h / nh)) * pm->row_bytes;
         for (x = 0; x < nw; x++) {
             *dst++ = src[x * (w / nw)];
+        }
+    }
+    BrResFree(pm->pixels);
+    pm->pixels = np;
+    pm->width = nw;
+    pm->height = nh;
+    pm->row_bytes = nw;
+    pm->origin_x = pm->origin_x * nw / w;
+    pm->origin_y = pm->origin_y * nh / h;
+}
+
+// RDP: sprite pixelmaps (pedestrians, gibs) of any size are reduced, keeping their aspect ratio, to what
+// the RDP can use anyway (2 KB): saves several MB of RAM.
+void N64_ShrinkSprite(br_pixelmap* pm) {
+    int w, h, nw, nh, x, y;
+    unsigned char *np, *dst;
+    float sc;
+
+    if (!gN64_use_rdp || pm == NULL || pm->type != BR_PMT_INDEX_8 || pm->pixels == NULL || pm->mip_offset != 0 || pm->base_x != 0 || pm->base_y != 0) {
+        return;
+    }
+    w = pm->width;
+    h = pm->height;
+    if (w * h <= 2048) {
+        return;
+    }
+    sc = sqrtf(2048.0f / (float)(w * h));
+    nw = (int)(w * sc);
+    nh = (int)(h * sc);
+    if (nw < 8) nw = 8;
+    if (nh < 1) nh = 1;
+    np = BrResAllocate(pm, nw * nh, BR_MEMORY_PIXELS);
+    if (np == NULL) {
+        return;
+    }
+    dst = np;
+    for (y = 0; y < nh; y++) {
+        const unsigned char* src = (const unsigned char*)pm->pixels + (size_t)((y * h) / nh) * pm->row_bytes;
+        for (x = 0; x < nw; x++) {
+            *dst++ = src[(x * w) / nw];
         }
     }
     BrResFree(pm->pixels);

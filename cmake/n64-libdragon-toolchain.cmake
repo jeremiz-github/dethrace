@@ -38,7 +38,7 @@ set(CMAKE_C_FLAGS_INIT "${N64_COMMON_FLAGS} -std=gnu17")
 set(CMAKE_CXX_FLAGS_INIT "${N64_COMMON_FLAGS} -std=gnu++17")
 set(CMAKE_ASM_FLAGS_INIT "${N64_COMMON_FLAGS}")
 
-set(CMAKE_C_FLAGS_RELEASE_INIT "-O2 -DNDEBUG")
+set(CMAKE_C_FLAGS_RELEASE_INIT "-Os -DNDEBUG")
 set(CMAKE_C_FLAGS_DEBUG_INIT "-O1 -g")
 
 # Linking: libdragon's linker script + libs, as in n64.mk

@@ -190,7 +190,7 @@ int N64_Rdp_OffsetY(void) {
 static int rdp_eff_w, rdp_eff_h;
 // The RDP reads texture data later, when it executes the command queue: copies must not be overwritten
 // before then, so each upload gets its own slot (the queue is drained when the ring wraps).
-#define RING_SLOTS 32
+#define RING_SLOTS 16
 static uint8_t rdp_ring[RING_SLOTS][2048] __attribute__((aligned(64)));
 static int rdp_ring_next;
 

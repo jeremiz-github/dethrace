@@ -1,4 +1,7 @@
 #include "pedestrn.h"
+#ifdef N64
+extern void N64_ShrinkSprite(br_pixelmap* pm);
+#endif
 #include "brender.h"
 #include "car.h"
 #include "constants.h"
@@ -370,6 +373,9 @@ void InitPedGibs(void) {
             } else {
                 the_pix = LoadPixelmap(gPed_gib_names[i][j]);
             }
+#ifdef N64
+            N64_ShrinkSprite(the_pix);
+#endif
             BrMapAdd(the_pix);
             gPed_gib_materials[i].count = gPed_size_counts[i];
             gPed_gib_materials[i].materials[j] = BrMaterialAllocate(NULL);
@@ -2836,6 +2842,9 @@ void CreatePedestrian(FILE* pG, tPedestrian_instruction* pInstructions, int pIns
                         if (the_sequence->frames[k].pixelmap == NULL) {
                             FatalError(kFatalError_FindPedestrianPixelmap_S, s);
                         }
+#ifdef N64
+                        N64_ShrinkSprite(the_sequence->frames[k].pixelmap);
+#endif
                         BrMapAdd(the_sequence->frames[k].pixelmap);
                     }
                     GetALineAndDontArgue(pG, s);
