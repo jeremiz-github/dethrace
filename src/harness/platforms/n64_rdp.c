@@ -17,6 +17,7 @@ int gN64_screen_w = 0;
 int gN64_screen_h = 0;
 int gN64_screen_stride = 0;
 
+static int bb_x0, bb_y0, bb_x1, bb_y1;
 static surface_t rdp_color, rdp_zbuf;
 static int rdp_surfaces_ok = 0;
 static int rdp_attached = 0;   // rdpq_attach is active
@@ -152,6 +153,7 @@ int N64_Rdp_BeginScene(void* pixels, int row_bytes, int w, int h) {
             rdpq_attach(&rdp_color, &rdp_zbuf);
         }
         rdp_attached = 1;
+        bb_x0 = 100000; bb_y0 = 100000; bb_x1 = -100000; bb_y1 = -100000;
         rdp_base_mode();
         rdp_tlut_dirty = 1;
     }
@@ -261,12 +263,25 @@ void N64_Rdp_SetMode(int kind) {
 }
 
 // v: x,y,z,r,g,b,a[,s,t,invw]
+static void bb_add(const float* a, const float* b, const float* c) {
+    float xs[3] = { a[0], b[0], c[0] }, ys[3] = { a[1], b[1], c[1] };
+    for (int i = 0; i < 3; i++) {
+        int x0 = (int)xs[i] - 1, x1 = (int)xs[i] + 2, y0 = (int)ys[i] - 1, y1 = (int)ys[i] + 2;
+        if (x0 < bb_x0) bb_x0 = x0;
+        if (x1 > bb_x1) bb_x1 = x1;
+        if (y0 < bb_y0) bb_y0 = y0;
+        if (y1 > bb_y1) bb_y1 = y1;
+    }
+}
+
 void N64_Rdp_TriFlat(const float* a, const float* b, const float* c) {
+    bb_add(a, b, c);
     rdpq_triangle(&TRIFMT_ZBUF_SHADE, a, b, c);
     gN64_rdp_tris++;
 }
 
 void N64_Rdp_TriTex(const float* a, const float* b, const float* c) {
+    bb_add(a, b, c);
     rdpq_triangle(&TRIFMT_ZBUF_SHADE_TEX, a, b, c);
     gN64_rdp_tris++;
 }
@@ -296,40 +311,43 @@ void N64_Rdp_EndScene(uint8_t* pixels, int row_bytes, int w, int h) {
     }
     // the surface lives in uncached RAM (UncachedAddr below): no cache maintenance needed
 
-    for (y = 0; y < h; y++) {
-        int sy = rdp_oy + y;
-        const uint16_t* src;
-        uint8_t* dst = pixels + (size_t)y * row_bytes;
-        int n = w;
-        if (sy < 0 || sy >= SCREEN_H) {
-            continue;
-        }
-        src = (const uint16_t*)((uint8_t*)UncachedAddr(rdp_color.buffer) + (size_t)sy * rdp_color.stride) + rdp_ox;
-        if (rdp_ox + n > SCREEN_W) {
-            n = SCREEN_W - rdp_ox;
-        }
-        if (rdp_snap != NULL && w == rdp_snap_w && h == rdp_snap_h) {
-            const uint8_t* old = rdp_snap + (size_t)y * w;
-            x = 0;
+    {
+        int y0 = bb_y0 - rdp_oy, y1 = bb_y1 - rdp_oy, x0 = bb_x0 - rdp_ox, x1 = bb_x1 - rdp_ox;
+        if (y0 < 0) y0 = 0;
+        if (x0 < 0) x0 = 0;
+        if (y1 > h) y1 = h;
+        if (x1 > w) x1 = w;
+        x0 &= ~1; // even start: 32-bit reads stay aligned
+        for (y = y0; y < y1; y++) {
+            int sy = rdp_oy + y;
+            const uint16_t* src;
+            uint8_t* dst = pixels + (size_t)y * row_bytes;
+            const uint8_t* old = NULL;
+            int n = x1;
+            if (sy < 0 || sy >= SCREEN_H) {
+                continue;
+            }
+            src = (const uint16_t*)((uint8_t*)UncachedAddr(rdp_color.buffer) + (size_t)sy * rdp_color.stride) + rdp_ox;
+            if (rdp_ox + n > SCREEN_W) {
+                n = SCREEN_W - rdp_ox;
+            }
+            if (rdp_snap != NULL && w == rdp_snap_w && h == rdp_snap_h) {
+                old = rdp_snap + (size_t)y * w;
+            }
+            x = x0;
             if ((rdp_ox & 1) == 0) {
-                const uint32_t* s32 = (const uint32_t*)src; // two pixels per uncached read
+                const uint32_t* s32 = (const uint32_t*)(src + x0);
                 for (; x + 1 < n; x += 2) {
                     uint32_t v = *s32++;
                     if (v & 0x00010001u) {
-                        if ((v & 0x00010000u) && dst[x] == old[x]) dst[x] = 0;
-                        if ((v & 1u) && dst[x + 1] == old[x + 1]) dst[x + 1] = 0;
+                        if ((v & 0x00010000u) && (old == NULL || dst[x] == old[x])) dst[x] = 0;
+                        if ((v & 1u) && (old == NULL || dst[x + 1] == old[x + 1])) dst[x + 1] = 0;
                     }
                 }
             }
             // pixels changed by software drawing during the scene (sprites, smoke...) stay on top
             for (; x < n; x++) {
-                if ((src[x] & 1) && dst[x] == old[x]) {
-                    dst[x] = 0;
-                }
-            }
-        } else {
-            for (x = 0; x < n; x++) {
-                if (src[x] & 1) {
+                if ((src[x] & 1) && (old == NULL || dst[x] == old[x])) {
                     dst[x] = 0;
                 }
             }
