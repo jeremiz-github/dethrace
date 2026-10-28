@@ -24,6 +24,8 @@ extern void QuitGame(void);
 #define N64_SCREEN_W 320
 #define N64_SCREEN_H 240
 
+extern volatile int gN64_stage;
+extern volatile uint32_t gN64_progress;
 static uint16_t converted_palette[256];
 static br_uint_32 key_state[8];
 static void (*gKeyHandler_func)(void) = NULL;
@@ -355,8 +357,6 @@ static void n64_report_stats(void) {
     }
 }
 
-extern volatile int gN64_stage;
-extern volatile uint32_t gN64_progress;
 static void N64_Harness_Swap(br_pixelmap* back_buffer) {
     gN64_stage = 1;
     gN64_progress++;
@@ -406,10 +406,11 @@ static void N64_Harness_Swap(br_pixelmap* back_buffer) {
         uint32_t* dst = (uint32_t*)((uint8_t*)disp->buffer + (size_t)(y + off_y) * disp->stride) + (off_x >> 1);
 
         if (step == 1 && use_rdp) {
-            const uint16_t* r3d = N64_Rdp_Row(y);
+            const uint32_t* r3d = (const uint32_t*)N64_Rdp_Row(y); // uncached: read two pixels at once
             for (x = 0; x < out_w; x += 2) {
-                uint16_t p0 = src[x] ? converted_palette[src[x]] : r3d[x];
-                uint16_t p1 = src[x + 1] ? converted_palette[src[x + 1]] : r3d[x + 1];
+                uint32_t r = *r3d++;
+                uint16_t p0 = src[x] ? converted_palette[src[x]] : (uint16_t)(r >> 16);
+                uint16_t p1 = src[x + 1] ? converted_palette[src[x + 1]] : (uint16_t)r;
                 *dst++ = ((uint32_t)p0 << 16) | p1;
             }
         } else if (step == 1) {
@@ -423,6 +424,7 @@ static void N64_Harness_Swap(br_pixelmap* back_buffer) {
         }
     }
     display_show(disp);
+    gN64_stage = 0;
     {
         extern void OS_N64_ProfEnd(int);
         OS_N64_ProfEnd(7);

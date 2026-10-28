@@ -746,7 +746,7 @@ static void n64_watchdog_cb(int ovfl) {
         return;
     }
     gN64_wd_still++;
-    if (gN64_wd_still >= 3 && (gN64_wd_still % 3) == 0 && gN64_wd_still <= 30) {
+    if (gN64_wd_still >= 6 && (gN64_wd_still % 6) == 0 && gN64_wd_still <= 18 && gN64_stage != 0) {
         fprintf(stderr, "WATCHDOG: no frame for %d s, stage %d, progress %u | SP_STATUS %08x SP_PC %08x DP_STATUS %08x DP_START %08x DP_END %08x DP_CUR %08x MI_INTR %08x\n",
             gN64_wd_still, gN64_stage, (unsigned)gN64_progress,
             (unsigned)*(volatile uint32_t*)0xA4040010, (unsigned)*(volatile uint32_t*)0xA4080000,
