@@ -9,6 +9,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
+extern volatile int gN64_stage;
 
 int gN64_use_rdp = 0; // boot-menu option "Renderer"
 
@@ -95,6 +96,54 @@ static void rdp_base_mode(void) {
 }
 
 // Called at the start of each 3D scene. Returns 1 if the RDP will render this scene.
+static uint8_t blend_tiles[13 * 20];
+static uint8_t* rdp_pix;
+static int rdp_pix_row, rdp_pix_w, rdp_pix_h;
+
+// Before a blended triangle is drawn: the RDP layer must hold the software image under it, otherwise the blend
+// mixes with black. Tiles of RDP-uncovered pixels (alpha bit 0) get the 8-bit image's colour (alpha stays 0).
+void N64_Rdp_PrepareBlend(float minx, float miny, float maxx, float maxy) {
+    int tx0 = (int)minx >> 4, ty0 = (int)miny >> 4, tx1 = (int)maxx >> 4, ty1 = (int)maxy >> 4;
+    int tx, ty, waited = 0;
+    if (!rdp_attached || rdp_pix == NULL) {
+        return;
+    }
+    if (tx0 < 0) tx0 = 0;
+    if (ty0 < 0) ty0 = 0;
+    if (tx1 > 19) tx1 = 19;
+    if (ty1 > 12) ty1 = 12;
+    for (ty = ty0; ty <= ty1; ty++) {
+        for (tx = tx0; tx <= tx1; tx++) {
+            int x, y, sx0, sy0;
+            if (blend_tiles[ty * 20 + tx]) {
+                continue;
+            }
+            blend_tiles[ty * 20 + tx] = 1;
+            if (!waited) {
+                gN64_stage = 14;
+                rspq_wait();
+                gN64_stage = 15;
+                waited = 1;
+            }
+            sx0 = tx * 16;
+            sy0 = ty * 16;
+            for (y = sy0; y < sy0 + 16 && y < SCREEN_H; y++) {
+                int py = y - rdp_oy;
+                uint16_t* d;
+                if (py < 0 || py >= rdp_pix_h) continue;
+                d = (uint16_t*)((uint8_t*)UncachedAddr(rdp_color.buffer) + (size_t)y * rdp_color.stride);
+                for (x = sx0; x < sx0 + 16 && x < SCREEN_W; x++) {
+                    int px = x - rdp_ox;
+                    if (px < 0 || px >= rdp_pix_w) continue;
+                    if (!(d[x] & 1)) {
+                        d[x] = rdp_tlut[rdp_pix[(size_t)py * rdp_pix_row + px]] & ~1;
+                    }
+                }
+            }
+        }
+    }
+}
+
 int N64_Rdp_BeginScene(void* pixels, int row_bytes, int w, int h) {
     long off;
     int ox, oy;
@@ -154,6 +203,7 @@ int N64_Rdp_BeginScene(void* pixels, int row_bytes, int w, int h) {
         }
         rdp_attached = 1;
         bb_x0 = 100000; bb_y0 = 100000; bb_x1 = -100000; bb_y1 = -100000;
+        memset(blend_tiles, 0, sizeof(blend_tiles));
         rdp_base_mode();
         rdp_tlut_dirty = 1;
     }
@@ -163,6 +213,10 @@ int N64_Rdp_BeginScene(void* pixels, int row_bytes, int w, int h) {
     }
     rdp_ox = ox;
     rdp_oy = oy;
+    rdp_pix = (uint8_t*)pixels;
+    rdp_pix_row = row_bytes;
+    rdp_pix_w = w;
+    rdp_pix_h = h;
     {
         int x1 = ox + w, y1 = oy + h;
         if (x1 > SCREEN_W) {
@@ -196,7 +250,9 @@ static int rdp_ring_next;
 
 static uint8_t* ring_slot(void) {
     if (rdp_ring_next >= RING_SLOTS) {
+        gN64_stage = 16;
         rspq_wait();
+        gN64_stage = 17;
         rdp_ring_next = 0;
     }
     return rdp_ring[rdp_ring_next++];
@@ -297,9 +353,9 @@ void N64_Rdp_SetMode(int kind) {
         rdpq_mode_zbuf(true, false);
         break;
     default:
-        rdpq_mode_combiner(RDPQ_COMBINER1((TEX0, ZERO, SHADE, ZERO), (ZERO, ZERO, ZERO, SHADE)));
+        rdpq_mode_combiner(RDPQ_COMBINER1((TEX0, ZERO, SHADE, ZERO), (TEX0, ZERO, SHADE, ZERO)));
         rdpq_mode_tlut(TLUT_RGBA16);
-        rdpq_mode_alphacompare(0);
+        rdpq_mode_alphacompare(8);
         rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
         rdpq_mode_zbuf(true, false);
         break;
@@ -320,12 +376,14 @@ static void bb_add(const float* a, const float* b, const float* c) {
 }
 
 void N64_Rdp_TriFlat(const float* a, const float* b, const float* c) {
+    gN64_stage = 19;
     bb_add(a, b, c);
     rdpq_triangle(&TRIFMT_ZBUF_SHADE, a, b, c);
     gN64_rdp_tris++;
 }
 
 void N64_Rdp_TriTex(const float* a, const float* b, const float* c) {
+    gN64_stage = 18;
     bb_add(a, b, c);
     rdpq_triangle(&TRIFMT_ZBUF_SHADE_TEX, a, b, c);
     gN64_rdp_tris++;
@@ -344,7 +402,9 @@ void N64_Rdp_EndScene(uint8_t* pixels, int row_bytes, int w, int h) {
             canary[ci] = 0xC0DE0000u + ci;
         }
         RDPLOG("end scene: %d tris, %d bounced textures; waiting for RDP (sp~%p)", gN64_rdp_tris, rdp_bounce_count, (void*)canary);
+        gN64_stage = 12;
         rdpq_detach_wait();
+        gN64_stage = 13;
         rdp_attached = 0;
         rdp_ring_next = 0;
         for (ci = 0; ci < 16; ci++) {

@@ -355,7 +355,11 @@ static void n64_report_stats(void) {
     }
 }
 
+extern volatile int gN64_stage;
+extern volatile uint32_t gN64_progress;
 static void N64_Harness_Swap(br_pixelmap* back_buffer) {
+    gN64_stage = 1;
+    gN64_progress++;
     int x, y;
     int out_w, out_h;
     int step;

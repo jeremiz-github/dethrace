@@ -731,7 +731,36 @@ static void n64_sampler_cb(int ovfl) {
     }
 }
 
+// Freeze watchdog: if no frame has been presented for a few seconds, report where the main loop was and
+// the RSP/RDP state, over the USB log (no backtrace: it is what froze the sampler).
+volatile int gN64_stage;
+volatile uint32_t gN64_progress;
+static timer_link_t* gN64_watchdog_timer;
+static uint32_t gN64_wd_last;
+static int gN64_wd_still;
+
+static void n64_watchdog_cb(int ovfl) {
+    if (gN64_progress != gN64_wd_last) {
+        gN64_wd_last = gN64_progress;
+        gN64_wd_still = 0;
+        return;
+    }
+    gN64_wd_still++;
+    if (gN64_wd_still >= 3 && (gN64_wd_still % 3) == 0 && gN64_wd_still <= 30) {
+        fprintf(stderr, "WATCHDOG: no frame for %d s, stage %d, progress %u | SP_STATUS %08x SP_PC %08x DP_STATUS %08x DP_START %08x DP_END %08x DP_CUR %08x MI_INTR %08x\n",
+            gN64_wd_still, gN64_stage, (unsigned)gN64_progress,
+            (unsigned)*(volatile uint32_t*)0xA4040010, (unsigned)*(volatile uint32_t*)0xA4080000,
+            (unsigned)*(volatile uint32_t*)0xA410000C, (unsigned)*(volatile uint32_t*)0xA4100000,
+            (unsigned)*(volatile uint32_t*)0xA4100004, (unsigned)*(volatile uint32_t*)0xA4100008,
+            (unsigned)*(volatile uint32_t*)0xA4300008);
+    }
+}
+
 void OS_N64_SamplerStart(void) {
+    if (gN64_watchdog_timer == NULL) {
+        timer_init();
+        gN64_watchdog_timer = new_timer(TIMER_TICKS(1000000), TF_CONTINUOUS, n64_watchdog_cb);
+    }
     if (gN64_sampler_timer == NULL && n64_opt("profiler")) {
         timer_init();
         gN64_sampler_timer = new_timer(TIMER_TICKS(100000), TF_CONTINUOUS, n64_sampler_cb);
