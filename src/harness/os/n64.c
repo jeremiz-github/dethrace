@@ -640,7 +640,7 @@ static const tN64_option gN64_option_defs[] = {
     { "lomem", "Low-memory mode", 0, 1, 1, kOffOn },
     { "spam", "Spam frittering", 0, 1, 0, kOffOn },
     { "physics", "Physics steps/frm", 1, 5, 3, NULL },
-    { "sampler", "CPU sampler (slow)", 0, 1, 0, kOffOn },
+    { "profiler", "CPU profiler (slow)", 0, 1, 0, kOffOn },
     { "diag", "Diagnostics log", 0, 1, 1, kOffOn },
     { "renderer", "Renderer", 0, 1, 1, kRenderer },
 };
@@ -732,9 +732,9 @@ static void n64_sampler_cb(int ovfl) {
 }
 
 void OS_N64_SamplerStart(void) {
-    if (gN64_sampler_timer == NULL && n64_opt("sampler")) {
+    if (gN64_sampler_timer == NULL && n64_opt("profiler")) {
         timer_init();
-        gN64_sampler_timer = new_timer(TIMER_TICKS(40000), TF_CONTINUOUS, n64_sampler_cb);
+        gN64_sampler_timer = new_timer(TIMER_TICKS(100000), TF_CONTINUOUS, n64_sampler_cb);
     }
 }
 

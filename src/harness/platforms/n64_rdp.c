@@ -188,7 +188,19 @@ int N64_Rdp_OffsetY(void) {
 
 // Make the given 8-bit texture current. Returns 0 if it cannot be used by the RDP.
 static int rdp_eff_w, rdp_eff_h;
-static uint8_t rdp_resample[2048] __attribute__((aligned(64)));
+// The RDP reads texture data later, when it executes the command queue: copies must not be overwritten
+// before then, so each upload gets its own slot (the queue is drained when the ring wraps).
+#define RING_SLOTS 32
+static uint8_t rdp_ring[RING_SLOTS][2048] __attribute__((aligned(64)));
+static int rdp_ring_next;
+
+static uint8_t* ring_slot(void) {
+    if (rdp_ring_next >= RING_SLOTS) {
+        rspq_wait();
+        rdp_ring_next = 0;
+    }
+    return rdp_ring[rdp_ring_next++];
+}
 
 static int pow2_floor(int v) {
     int p = 1;
@@ -213,6 +225,7 @@ int N64_Rdp_SetTexture(const uint8_t* px, int w, int h, int row_bytes, int* ew, 
     }
     if ((w & (w - 1)) || (h & (h - 1)) || w * h > 2048 || w > 256 || h > 256 || w < 8) {
         int x, y;
+        uint8_t* slot = ring_slot();
         tw = pow2_floor(w > 256 ? 256 : w);
         th = pow2_floor(h > 256 ? 256 : h);
         if (tw < 8) tw = 8;
@@ -224,18 +237,19 @@ int N64_Rdp_SetTexture(const uint8_t* px, int w, int h, int row_bytes, int* ew, 
         for (y = 0; y < th; y++) {
             const uint8_t* row = px + (size_t)((y * h) / th) * row_bytes;
             for (x = 0; x < tw; x++) {
-                rdp_resample[y * tw + x] = row[(x * w) / tw];
+                slot[y * tw + x] = row[(x * w) / tw];
             }
         }
-        src = rdp_resample;
+        src = slot;
         stride = tw;
         rdp_bounce_count++;
     } else if (((uintptr_t)px & 7) || (row_bytes & 7)) {
         int y;
+        uint8_t* slot = ring_slot();
         for (y = 0; y < h; y++) {
-            memcpy(rdp_bounce + y * w, px + y * row_bytes, w);
+            memcpy(slot + y * w, px + y * row_bytes, w);
         }
-        src = rdp_bounce;
+        src = slot;
         stride = w;
         rdp_bounce_count++;
     }
@@ -332,6 +346,7 @@ void N64_Rdp_EndScene(uint8_t* pixels, int row_bytes, int w, int h) {
         RDPLOG("end scene: %d tris, %d bounced textures; waiting for RDP (sp~%p)", gN64_rdp_tris, rdp_bounce_count, (void*)canary);
         rdpq_detach_wait();
         rdp_attached = 0;
+        rdp_ring_next = 0;
         for (ci = 0; ci < 16; ci++) {
             if (canary[ci] != 0xC0DE0000u + ci) {
                 RDPLOG("STACK CORRUPTED by detach/wait: canary[%d]=%08x", ci, (unsigned)canary[ci]);
