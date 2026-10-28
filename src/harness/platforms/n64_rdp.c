@@ -187,21 +187,50 @@ int N64_Rdp_OffsetY(void) {
 }
 
 // Make the given 8-bit texture current. Returns 0 if it cannot be used by the RDP.
-int N64_Rdp_SetTexture(const uint8_t* px, int w, int h, int row_bytes) {
+static int rdp_eff_w, rdp_eff_h;
+static uint8_t rdp_resample[2048] __attribute__((aligned(64)));
+
+static int pow2_floor(int v) {
+    int p = 1;
+    while (p * 2 <= v) p *= 2;
+    return p;
+}
+
+// Uploads the 8-bit texture; textures TMEM cannot take as they are (not a power of two, too big) are
+// resampled (nearest). *ew/*eh receive the size actually uploaded.
+int N64_Rdp_SetTexture(const uint8_t* px, int w, int h, int row_bytes, int* ew, int* eh) {
     const uint8_t* src = px;
     int stride = row_bytes;
+    int tw = w, th = h;
 
     if (px == rdp_tex_ptr && w == rdp_tex_w && h == rdp_tex_h) {
+        *ew = rdp_eff_w;
+        *eh = rdp_eff_h;
         return 1;
     }
-    if (w < 8 || h < 1 || (w & (w - 1)) || (h & (h - 1)) || w * h > 2048 || w > 256 || h > 256) {
-        if (!rdp_bad_tex_logged) {
-            rdp_bad_tex_logged = 1;
-            debugf("rdp: unusable texture %dx%d\n", w, h);
-        }
+    if (w < 1 || h < 1) {
         return 0;
     }
-    if (((uintptr_t)px & 7) || (row_bytes & 7)) {
+    if ((w & (w - 1)) || (h & (h - 1)) || w * h > 2048 || w > 256 || h > 256 || w < 8) {
+        int x, y;
+        tw = pow2_floor(w > 256 ? 256 : w);
+        th = pow2_floor(h > 256 ? 256 : h);
+        if (tw < 8) tw = 8;
+        while (tw * th > 2048) {
+            if (th > tw && th > 1) th /= 2;
+            else if (tw > 8) tw /= 2;
+            else th /= 2;
+        }
+        for (y = 0; y < th; y++) {
+            const uint8_t* row = px + (size_t)((y * h) / th) * row_bytes;
+            for (x = 0; x < tw; x++) {
+                rdp_resample[y * tw + x] = row[(x * w) / tw];
+            }
+        }
+        src = rdp_resample;
+        stride = tw;
+        rdp_bounce_count++;
+    } else if (((uintptr_t)px & 7) || (row_bytes & 7)) {
         int y;
         for (y = 0; y < h; y++) {
             memcpy(rdp_bounce + y * w, px + y * row_bytes, w);
@@ -210,15 +239,17 @@ int N64_Rdp_SetTexture(const uint8_t* px, int w, int h, int row_bytes) {
         stride = w;
         rdp_bounce_count++;
     }
-    data_cache_hit_writeback((void*)src, stride * h);
+    data_cache_hit_writeback((void*)src, stride * th);
     {
-        surface_t s = surface_make((void*)src, FMT_CI8, w, h, stride);
+        surface_t s = surface_make((void*)src, FMT_CI8, tw, th, stride);
         rdpq_texparms_t tp = { .s.repeats = REPEAT_INFINITE, .t.repeats = REPEAT_INFINITE };
         rdpq_tex_upload(TILE0, &s, &tp);
     }
     rdp_tex_ptr = px;
     rdp_tex_w = w;
     rdp_tex_h = h;
+    rdp_eff_w = *ew = tw;
+    rdp_eff_h = *eh = th;
     return 1;
 }
 

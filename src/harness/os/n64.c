@@ -640,7 +640,7 @@ static const tN64_option gN64_option_defs[] = {
     { "lomem", "Low-memory mode", 0, 1, 1, kOffOn },
     { "spam", "Spam frittering", 0, 1, 0, kOffOn },
     { "physics", "Physics steps/frm", 1, 5, 3, NULL },
-    { "sampler", "CPU sampler (slow)", 0, 1, 1, kOffOn },
+    { "sampler", "CPU sampler (slow)", 0, 1, 0, kOffOn },
     { "diag", "Diagnostics log", 0, 1, 1, kOffOn },
     { "renderer", "Renderer", 0, 1, 1, kRenderer },
 };
