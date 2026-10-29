@@ -2069,20 +2069,24 @@ void RenderAFrame(int pDepth_mask_on) {
         OS_N64_ProfBegin(N64_PROF_SCENE_3D);
 #endif
         BrZbSceneRenderBegin(gUniverse_actor, gCamera, gRender_screen, gDepth_buffer);
-        ProcessNonTrackActors(gRender_screen, gDepth_buffer, gCamera, &gCamera_to_world, &old_camera_matrix);
-        ProcessTrack(gUniverse_actor, &gProgram_state.track_spec, gCamera, &gCamera_to_world, 0);
+        PROF(N64_PROF_NONTRACK, ProcessNonTrackActors(gRender_screen, gDepth_buffer, gCamera, &gCamera_to_world, &old_camera_matrix));
+        PROF(N64_PROF_TRACK, ProcessTrack(gUniverse_actor, &gProgram_state.track_spec, gCamera, &gCamera_to_world, 0));
         RenderLollipops();
 
+        OS_N64_ProfBegin(N64_PROF_EFFECTS);
         DepthEffectSky(gRender_screen, gDepth_buffer, gCamera, &gCamera_to_world);
         DepthEffect(gRender_screen, gDepth_buffer, gCamera, &gCamera_to_world);
+        OS_N64_ProfEnd(N64_PROF_EFFECTS);
         if (!gAusterity_mode) {
             ProcessTrack(gUniverse_actor, &gProgram_state.track_spec, gCamera, &gCamera_to_world, 1);
         }
+        OS_N64_ProfBegin(N64_PROF_EFFECTS);
         RenderSplashes();
         RenderSmoke(gRender_screen, gDepth_buffer, gCamera, &gCamera_to_world, gFrame_period);
         RenderSparks(gRender_screen, gDepth_buffer, gCamera, &gCamera_to_world, gFrame_period);
         RenderProximityRays(gRender_screen, gDepth_buffer, gCamera, &gCamera_to_world, gFrame_period);
         BrZbSceneRenderEnd();
+        OS_N64_ProfEnd(N64_PROF_EFFECTS);
 #ifdef N64
         OS_N64_ProfEnd(N64_PROF_SCENE_3D);
 #endif

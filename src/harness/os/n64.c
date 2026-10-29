@@ -893,8 +893,11 @@ void OS_N64_BootMenu(char* args, size_t size) {
 }
 
 // per-phase profiler (see DETHRACE/n64prof.h)
-uint32_t gN64_prof_ticks[8];
-static uint32_t gN64_prof_start[8];
+uint32_t gN64_prof_ticks[16];
+static uint32_t gN64_prof_start[16];
+uint32_t OS_N64_Ticks(void) {
+    return get_ticks();
+}
 
 void OS_N64_ProfBegin(int bucket) {
     gN64_prof_start[bucket] = get_ticks();

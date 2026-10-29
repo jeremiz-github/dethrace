@@ -266,7 +266,18 @@ static int pow2_floor(int v) {
 
 // Uploads the 8-bit texture; textures TMEM cannot take as they are (not a power of two, too big) are
 // resampled (nearest). *ew/*eh receive the size actually uploaded.
+extern void OS_N64_ProfBegin(int);
+extern void OS_N64_ProfEnd(int);
+static int rdp_set_texture(const uint8_t* px, int w, int h, int row_bytes, int* ew, int* eh);
 int N64_Rdp_SetTexture(const uint8_t* px, int w, int h, int row_bytes, int* ew, int* eh) {
+    int r;
+    OS_N64_ProfBegin(9);
+    r = rdp_set_texture(px, w, h, row_bytes, ew, eh);
+    OS_N64_ProfEnd(9);
+    return r;
+}
+
+static int rdp_set_texture(const uint8_t* px, int w, int h, int row_bytes, int* ew, int* eh) {
     const uint8_t* src = px;
     int stride = row_bytes;
     int tw = w, th = h;

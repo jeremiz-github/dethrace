@@ -322,14 +322,19 @@ static void n64_report_stats(void) {
             gPad_buttons, gPad_stick_x, gPad_stick_y, (unsigned)key_state[6], (unsigned)key_state[0]);
         {
             // average milliseconds per frame spent in each phase of a race frame (0 outside races)
-            extern uint32_t gN64_prof_ticks[8];
+            extern uint32_t gN64_prof_ticks[16];
             float ms_per_tick = 1000.0f / (float)TICKS_PER_SECOND / (float)(frames ? frames : 1);
             dr_dprintf("prof ms/frame: oppo %d phys %d cargfx %d peds %d | render %d (scene3d %d shadows %d) swap %d",
                 (int)(gN64_prof_ticks[0] * ms_per_tick), (int)(gN64_prof_ticks[1] * ms_per_tick),
                 (int)(gN64_prof_ticks[2] * ms_per_tick), (int)(gN64_prof_ticks[3] * ms_per_tick),
                 (int)(gN64_prof_ticks[4] * ms_per_tick), (int)(gN64_prof_ticks[5] * ms_per_tick),
                 (int)(gN64_prof_ticks[6] * ms_per_tick), (int)(gN64_prof_ticks[7] * ms_per_tick));
-            memset(gN64_prof_ticks, 0, sizeof(uint32_t) * 8);
+            dr_dprintf("prof2 ms/frame: rdptri %d (tex %d) rdpend %d | v1model %d renderBegin %d | track %d nontrack %d effects %d",
+                (int)(gN64_prof_ticks[8] * ms_per_tick), (int)(gN64_prof_ticks[9] * ms_per_tick),
+                (int)(gN64_prof_ticks[10] * ms_per_tick), (int)(gN64_prof_ticks[11] * ms_per_tick),
+                (int)(gN64_prof_ticks[12] * ms_per_tick), (int)(gN64_prof_ticks[13] * ms_per_tick),
+                (int)(gN64_prof_ticks[14] * ms_per_tick), (int)(gN64_prof_ticks[15] * ms_per_tick));
+            memset(gN64_prof_ticks, 0, sizeof(uint32_t) * 16);
         }
         {
             // once per race: full memory breakdown by class, to guide memory optimisation
