@@ -30,7 +30,13 @@ static int rdp_first_ox, rdp_first_oy, rdp_first_w, rdp_first_h;
 static int rdp_ox, rdp_oy;     // position of the current scene in the back screen
 static uint16_t rdp_tlut[256] __attribute__((aligned(8)));
 static int rdp_tlut_dirty = 1;
+static const uint16_t* rdp_tlut_cur;
 static unsigned rdp_pal_serial = 1;
+
+// distance fog, set each frame by the game (depth.c): fog starts at depth z0 (0..1) and reaches strength k
+int gN64_fog_on;
+float gN64_fog_z0 = 2.0f, gN64_fog_k;
+uint8_t gN64_fog_rgb[3];
 
 unsigned N64_Rdp_PaletteSerial(void) {
     return rdp_pal_serial;
@@ -207,10 +213,15 @@ int N64_Rdp_BeginScene(void* pixels, int row_bytes, int w, int h) {
         bb_x0 = 100000; bb_y0 = 100000; bb_x1 = -100000; bb_y1 = -100000;
         memset(blend_tiles, 0, sizeof(blend_tiles));
         rdp_base_mode();
+        if (gN64_fog_on) {
+            rdpq_set_fog_color(RGBA32(gN64_fog_rgb[0], gN64_fog_rgb[1], gN64_fog_rgb[2], 255));
+        }
         rdp_tlut_dirty = 1;
     }
     if (rdp_tlut_dirty) {
+        data_cache_hit_writeback(rdp_tlut, sizeof(rdp_tlut));
         rdpq_tex_upload_tlut(rdp_tlut, 0, 256);
+        rdp_tlut_cur = rdp_tlut;
         rdp_tlut_dirty = 0;
     }
     rdp_ox = ox;
@@ -334,6 +345,23 @@ static int rdp_set_texture(const uint8_t* px, int w, int h, int row_bytes, int* 
     return 1;
 }
 
+// Selects the 256-entry palette the RDP uses for the following textured triangles (NULL = the game palette).
+void N64_Rdp_UseTlut(const uint16_t* t) {
+    if (t == NULL) {
+        t = rdp_tlut;
+    }
+    if (t == rdp_tlut_cur) {
+        return;
+    }
+    data_cache_hit_writeback((void*)t, 512);
+    rdpq_tex_upload_tlut(t, 0, 256);
+    rdp_tlut_cur = t;
+}
+
+void N64_Rdp_InvalidateTlut(void) {
+    rdp_tlut_cur = NULL;
+}
+
 // kind: 0 flat, 1 textured, 2 flat blended, 3 textured blended
 void N64_Rdp_SetMode(int kind) {
     if (kind == rdp_mode) {
@@ -348,6 +376,7 @@ void N64_Rdp_SetMode(int kind) {
         rdpq_mode_tlut(TLUT_NONE);
         rdpq_mode_alphacompare(0);
         rdpq_mode_blender(0);
+        rdpq_mode_fog(gN64_fog_on ? RDPQ_FOG_STANDARD : 0);
         rdpq_mode_zbuf(true, true);
         break;
     case 1:
@@ -355,12 +384,22 @@ void N64_Rdp_SetMode(int kind) {
         rdpq_mode_tlut(TLUT_RGBA16);
         rdpq_mode_alphacompare(128);
         rdpq_mode_blender(0);
+        rdpq_mode_fog(gN64_fog_on ? RDPQ_FOG_STANDARD : 0);
         rdpq_mode_zbuf(true, true);
         break;
     case 2:
         rdpq_mode_combiner(RDPQ_COMBINER_SHADE);
         rdpq_mode_tlut(TLUT_NONE);
         rdpq_mode_alphacompare(0);
+        rdpq_mode_fog(0);
+        rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
+        rdpq_mode_zbuf(true, false);
+        break;
+    case 4: // blended, grey palette: intensity + alpha straight from the (special) TLUT
+        rdpq_mode_combiner(RDPQ_COMBINER1((ZERO, ZERO, ZERO, TEX0), (ZERO, ZERO, ZERO, TEX0)));
+        rdpq_mode_tlut(TLUT_IA16);
+        rdpq_mode_alphacompare(1);
+        rdpq_mode_fog(0);
         rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
         rdpq_mode_zbuf(true, false);
         break;
@@ -368,6 +407,7 @@ void N64_Rdp_SetMode(int kind) {
         rdpq_mode_combiner(RDPQ_COMBINER1((TEX0, ZERO, SHADE, ZERO), (TEX0, ZERO, SHADE, ZERO)));
         rdpq_mode_tlut(TLUT_RGBA16);
         rdpq_mode_alphacompare(8);
+        rdpq_mode_fog(0);
         rdpq_mode_blender(RDPQ_BLENDER_MULTIPLY);
         rdpq_mode_zbuf(true, false);
         break;

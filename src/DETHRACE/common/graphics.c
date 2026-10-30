@@ -1,3 +1,6 @@
+#ifdef N64
+extern void N64_UpdateFog(void);
+#endif
 #include "graphics.h"
 #include "n64prof.h"
 
@@ -2067,6 +2070,9 @@ void RenderAFrame(int pDepth_mask_on) {
         PROF(N64_PROF_SHADOWS, RenderShadows(gUniverse_actor, &gProgram_state.track_spec, gCamera, &gCamera_to_world));
 #ifdef N64
         OS_N64_ProfBegin(N64_PROF_SCENE_3D);
+#endif
+#ifdef N64
+        N64_UpdateFog();
 #endif
         BrZbSceneRenderBegin(gUniverse_actor, gCamera, gRender_screen, gDepth_buffer);
         PROF(N64_PROF_NONTRACK, ProcessNonTrackActors(gRender_screen, gDepth_buffer, gCamera, &gCamera_to_world, &old_camera_matrix));

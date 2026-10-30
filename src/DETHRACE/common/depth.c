@@ -692,6 +692,84 @@ void DoFog(br_pixelmap* pRender_buffer, br_pixelmap* pDepth_buffer) {
         gProgram_state.current_depth_effect.end);
 }
 
+
+#ifdef N64
+extern int gN64_fog_on;
+extern float gN64_fog_z0, gN64_fog_k;
+extern uint8_t gN64_fog_rgb[3];
+extern uint16_t N64_Rdp_PaletteEntry(int i);
+extern int gN64_use_rdp;
+
+static int n64_luma(uint16_t c) {
+    return ((c >> 11) & 31) * 77 + ((c >> 6) & 31) * 150 + ((c >> 1) & 31) * 29;
+}
+
+// Derive RDP fog parameters from the game's depth-cue / fog shade table for the current frame.
+void N64_UpdateFog(void) {
+    br_pixelmap* tab;
+    int power, start, end, shift, row, i, iw = 1, ib = 1, yw = -1, yb = 1 << 30;
+    int rowmax;
+    uint16_t c0w, c0b, c1w, c1b;
+    float k, kw, r[3];
+    tU8* px;
+
+    gN64_fog_on = 0;
+    if (!gN64_use_rdp) {
+        return;
+    }
+    if (gProgram_state.current_depth_effect.type == eDepth_effect_fog) {
+        tab = gFog_shade_table;
+        power = gFog_shade_table_power;
+    } else if (gProgram_state.current_depth_effect.type == eDepth_effect_darkness) {
+        tab = gDepth_shade_table;
+        power = gDepth_shade_table_power;
+    } else {
+        return;
+    }
+    if (tab == NULL || tab->pixels == NULL) {
+        return;
+    }
+    start = gProgram_state.current_depth_effect.start;
+    end = gProgram_state.current_depth_effect.end;
+    shift = power + 8 - start - end;
+    rowmax = (1 << start) - 1;
+    rowmax = shift > 0 ? (rowmax << shift) : (rowmax >> -shift);
+    row = (rowmax >> 8) & 0xFF;
+    px = (tU8*)tab->pixels;
+    for (i = 1; i < 256; i++) {
+        int y = n64_luma(N64_Rdp_PaletteEntry(i));
+        if (y > yw) { yw = y; iw = i; }
+        if (y < yb) { yb = y; ib = i; }
+    }
+    c0w = N64_Rdp_PaletteEntry(iw);
+    c0b = N64_Rdp_PaletteEntry(ib);
+    c1w = N64_Rdp_PaletteEntry(px[row * tab->row_bytes + iw]);
+    c1b = N64_Rdp_PaletteEntry(px[row * tab->row_bytes + ib]);
+    {
+        int d0 = n64_luma(c0w) - n64_luma(c0b);
+        int d1 = n64_luma(c1w) - n64_luma(c1b);
+        k = d0 > 0 ? 1.0f - (float)d1 / (float)d0 : 1.0f;
+    }
+    if (k < 0.05f) {
+        return;
+    }
+    if (k > 1.0f) {
+        k = 1.0f;
+    }
+    kw = k;
+    r[0] = (((c1w >> 11) & 31) - (1 - kw) * ((c0w >> 11) & 31)) / kw;
+    r[1] = (((c1w >> 6) & 31) - (1 - kw) * ((c0w >> 6) & 31)) / kw;
+    r[2] = (((c1w >> 1) & 31) - (1 - kw) * ((c0w >> 1) & 31)) / kw;
+    for (i = 0; i < 3; i++) {
+        float v = r[i] * 255.0f / 31.0f;
+        gN64_fog_rgb[i] = v < 0 ? 0 : v > 255 ? 255 : (uint8_t)v;
+    }
+    gN64_fog_z0 = (float)(0x10000 - (1 << start)) / 65535.0f;
+    gN64_fog_k = k;
+    gN64_fog_on = 1;
+}
+#endif
+
 // IDA: void __usercall DepthEffect(br_pixelmap *pRender_buffer@<EAX>, br_pixelmap *pDepth_buffer@<EDX>, br_actor *pCamera@<EBX>, br_matrix34 *pCamera_to_world@<ECX>)
 // FUNCTION: CARM95 0x00462254
 void DepthEffect(br_pixelmap* pRender_buffer, br_pixelmap* pDepth_buffer, br_actor* pCamera, br_matrix34* pCamera_to_world) {
