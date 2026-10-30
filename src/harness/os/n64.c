@@ -640,7 +640,7 @@ static const tN64_option gN64_option_defs[] = {
     { "lomem", "Low-memory mode", 0, 1, 1, kOffOn },
     { "spam", "Spam frittering", 0, 1, 0, kOffOn },
     { "physics", "Physics steps/frm", 1, 5, 3, NULL },
-    { "profiler", "CPU profiler (slow)", 0, 1, 0, kOffOn },
+    { "cpuprof", "CPU profiler", 0, 1, 1, kOffOn },
     { "diag", "Diagnostics log", 0, 1, 1, kOffOn },
     { "renderer", "Renderer", 0, 1, 1, kRenderer },
 };
@@ -707,27 +707,37 @@ extern uint32_t inthandler[];
 extern uint32_t inthandler_end[];
 extern int OS_N64_InRace(void);
 
-#define N64_SAMPLES_MAX 600
-static uint32_t gN64_samples[N64_SAMPLES_MAX];
-static volatile int gN64_sample_count;
+#define N64_BINS 1024
+static uint32_t gN64_bin_addr[N64_BINS];
+static uint16_t gN64_bin_count[N64_BINS];
+static volatile int gN64_sample_total;
 static timer_link_t* gN64_sampler_timer;
 
+// Timer interrupt: record the interrupted PC (cop0 EPC) in a small hash of 16-byte bins. Cheap enough for 500 Hz.
 static void n64_sampler_cb(int ovfl) {
-    void* buf[8];
-    int n, k;
+    uint32_t pc = (uint32_t)C0_EPC();
+    uint32_t key = pc >> 4;
+    uint32_t h = (key * 2654435761u) >> 22; // 10 bits
+    int probe;
     (void)ovfl;
-    if (gN64_sample_count >= N64_SAMPLES_MAX || !OS_N64_InRace()) {
+    if (!OS_N64_InRace()) {
         return;
     }
-    n = backtrace(buf, 8);
-    for (k = 0; k < n; k++) {
-        uint32_t a = (uint32_t)buf[k];
-        if (a >= (uint32_t)inthandler && a < (uint32_t)inthandler_end) {
-            break;
+    for (probe = 0; probe < 8; probe++) {
+        uint32_t i = (h + probe) & (N64_BINS - 1);
+        if (gN64_bin_count[i] == 0) {
+            gN64_bin_addr[i] = pc;
+            gN64_bin_count[i] = 1;
+            gN64_sample_total++;
+            return;
         }
-    }
-    if (k + 1 < n) {
-        gN64_samples[gN64_sample_count++] = (uint32_t)buf[k + 1];
+        if ((gN64_bin_addr[i] >> 4) == key) {
+            if (gN64_bin_count[i] < 65535) {
+                gN64_bin_count[i]++;
+            }
+            gN64_sample_total++;
+            return;
+        }
     }
 }
 
@@ -761,13 +771,14 @@ void OS_N64_SamplerStart(void) {
         timer_init();
         gN64_watchdog_timer = new_timer(TIMER_TICKS(1000000), TF_CONTINUOUS, n64_watchdog_cb);
     }
-    if (gN64_sampler_timer == NULL && n64_opt("profiler")) {
+    if (gN64_sampler_timer == NULL && n64_opt("cpuprof")) {
         timer_init();
-        gN64_sampler_timer = new_timer(TIMER_TICKS(100000), TF_CONTINUOUS, n64_sampler_cb);
+        gN64_sampler_timer = new_timer(TIMER_TICKS(2000), TF_CONTINUOUS, n64_sampler_cb);
     }
 }
 
-static struct { char name[40]; int count; } gN64_sampler_tab[96];
+static struct { char name[40]; int count; } gN64_sampler_tab[160];
+static int gN64_sampler_weight;
 static int gN64_sampler_tab_n;
 
 static void n64_sampler_frame(void* arg, backtrace_frame_t* f) {
@@ -777,34 +788,34 @@ static void n64_sampler_frame(void* arg, backtrace_frame_t* f) {
     }
     for (i = 0; i < gN64_sampler_tab_n; i++) {
         if (strcmp(gN64_sampler_tab[i].name, f->func) == 0) {
-            gN64_sampler_tab[i].count++;
+            gN64_sampler_tab[i].count += gN64_sampler_weight;
             return;
         }
     }
-    if (gN64_sampler_tab_n < 96) {
+    if (gN64_sampler_tab_n < 160) {
         strncpy(gN64_sampler_tab[gN64_sampler_tab_n].name, f->func ? f->func : "?", 39);
         gN64_sampler_tab[gN64_sampler_tab_n].name[39] = '\0';
-        gN64_sampler_tab[gN64_sampler_tab_n].count = 1;
+        gN64_sampler_tab[gN64_sampler_tab_n].count = gN64_sampler_weight;
         gN64_sampler_tab_n++;
     }
 }
 
 void OS_N64_SamplerReport(void (*print)(const char* fmt, ...)) {
-    int n = gN64_sample_count, i, j, shown;
-    static void* addrs[N64_SAMPLES_MAX];
-    if (n < 8) {
-        gN64_sample_count = 0;
+    int n = gN64_sample_total, i, j, shown;
+    if (n < 500) { // report about every second of racing at 500 Hz
         return;
     }
-    for (i = 0; i < n; i++) {
-        addrs[i] = (void*)gN64_samples[i];
-    }
-    gN64_sample_count = 0;
     gN64_sampler_tab_n = 0;
-    for (i = 0; i < n; i++) {
-        backtrace_symbols_cb(&addrs[i], 1, 0, n64_sampler_frame, NULL);
+    for (i = 0; i < N64_BINS; i++) {
+        if (gN64_bin_count[i]) {
+            void* a = (void*)gN64_bin_addr[i];
+            gN64_sampler_weight = gN64_bin_count[i];
+            backtrace_symbols_cb(&a, 1, 0, n64_sampler_frame, NULL);
+            gN64_bin_count[i] = 0;
+        }
     }
-    for (shown = 0; shown < 8; shown++) {
+    gN64_sample_total = 0;
+    for (shown = 0; shown < 22; shown++) {
         int best = -1;
         for (j = 0; j < gN64_sampler_tab_n; j++) {
             if (gN64_sampler_tab[j].count > 0 && (best < 0 || gN64_sampler_tab[j].count > gN64_sampler_tab[best].count)) {
@@ -814,8 +825,7 @@ void OS_N64_SamplerReport(void (*print)(const char* fmt, ...)) {
         if (best < 0) {
             break;
         }
-        print("sampler: %2d%% %s (%d/%d)", gN64_sampler_tab[best].count * 100 / n, gN64_sampler_tab[best].name,
-            gN64_sampler_tab[best].count, n);
+        print("sampler: %2d%% %s", gN64_sampler_tab[best].count * 100 / n, gN64_sampler_tab[best].name);
         gN64_sampler_tab[best].count = 0;
     }
 }
@@ -893,8 +903,8 @@ void OS_N64_BootMenu(char* args, size_t size) {
 }
 
 // per-phase profiler (see DETHRACE/n64prof.h)
-uint32_t gN64_prof_ticks[16];
-static uint32_t gN64_prof_start[16];
+uint32_t gN64_prof_ticks[24];
+static uint32_t gN64_prof_start[24];
 uint32_t OS_N64_Ticks(void) {
     return get_ticks();
 }

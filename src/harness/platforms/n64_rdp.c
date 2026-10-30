@@ -10,6 +10,8 @@
 #include <string.h>
 #include <stdlib.h>
 extern volatile int gN64_stage;
+extern void OS_N64_ProfBegin(int);
+extern void OS_N64_ProfEnd(int);
 
 int gN64_use_rdp = 0; // boot-menu option "Renderer"
 
@@ -266,8 +268,6 @@ static int pow2_floor(int v) {
 
 // Uploads the 8-bit texture; textures TMEM cannot take as they are (not a power of two, too big) are
 // resampled (nearest). *ew/*eh receive the size actually uploaded.
-extern void OS_N64_ProfBegin(int);
-extern void OS_N64_ProfEnd(int);
 static int rdp_set_texture(const uint8_t* px, int w, int h, int row_bytes, int* ew, int* eh);
 int N64_Rdp_SetTexture(const uint8_t* px, int w, int h, int row_bytes, int* ew, int* eh) {
     int r;
@@ -339,6 +339,7 @@ void N64_Rdp_SetMode(int kind) {
     if (kind == rdp_mode) {
         return;
     }
+    OS_N64_ProfBegin(17);
     rdp_mode = kind;
     rdpq_mode_begin();
     switch (kind) {
@@ -372,6 +373,7 @@ void N64_Rdp_SetMode(int kind) {
         break;
     }
     rdpq_mode_end();
+    OS_N64_ProfEnd(17);
 }
 
 // v: x,y,z,r,g,b,a[,s,t,invw]
@@ -389,14 +391,18 @@ static void bb_add(const float* a, const float* b, const float* c) {
 void N64_Rdp_TriFlat(const float* a, const float* b, const float* c) {
     gN64_stage = 19;
     bb_add(a, b, c);
+    OS_N64_ProfBegin(16);
     rdpq_triangle(&TRIFMT_ZBUF_SHADE, a, b, c);
+    OS_N64_ProfEnd(16);
     gN64_rdp_tris++;
 }
 
 void N64_Rdp_TriTex(const float* a, const float* b, const float* c) {
     gN64_stage = 18;
     bb_add(a, b, c);
+    OS_N64_ProfBegin(16);
     rdpq_triangle(&TRIFMT_ZBUF_SHADE_TEX, a, b, c);
+    OS_N64_ProfEnd(16);
     gN64_rdp_tris++;
 }
 
