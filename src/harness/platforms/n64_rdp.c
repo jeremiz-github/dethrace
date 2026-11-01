@@ -505,10 +505,16 @@ void N64_Rdp_EndScene(uint8_t* pixels, int row_bytes, int w, int h) {
             if (sy < 0 || sy >= SCREEN_H) {
                 continue;
             }
-            src = (const uint16_t*)((uint8_t*)UncachedAddr(rdp_color.buffer) + (size_t)sy * rdp_color.stride) + rdp_ox;
             if (rdp_ox + n > SCREEN_W) {
                 n = SCREEN_W - rdp_ox;
             }
+            {
+                // read through the cache (burst fills): drop whatever stale lines cover this row segment first
+                uintptr_t a0 = ((uintptr_t)rdp_color.buffer + (size_t)sy * rdp_color.stride + (size_t)(rdp_ox + x0) * 2) & ~(uintptr_t)15;
+                uintptr_t a1 = ((uintptr_t)rdp_color.buffer + (size_t)sy * rdp_color.stride + (size_t)(rdp_ox + n) * 2 + 15) & ~(uintptr_t)15;
+                data_cache_hit_invalidate((void*)a0, a1 - a0);
+            }
+            src = (const uint16_t*)((uint8_t*)rdp_color.buffer + (size_t)sy * rdp_color.stride) + rdp_ox;
             if (rdp_snap != NULL && w == rdp_snap_w && h == rdp_snap_h) {
                 old = rdp_snap + (size_t)y * w;
             }
@@ -535,12 +541,17 @@ void N64_Rdp_EndScene(uint8_t* pixels, int row_bytes, int w, int h) {
 
 // Swap(): is there 3D to merge this frame?
 int N64_Rdp_FrameActive(void) {
-    return rdp_have_frame && rdp_surfaces_ok;
+    if (rdp_have_frame && rdp_surfaces_ok) {
+        data_cache_hit_invalidate(rdp_color.buffer, (size_t)rdp_color.stride * rdp_color.height);
+        return 1;
+    }
+    return 0;
 }
 
 // Pixel (x,y) of the RDP layer, RGBA5551
 const uint16_t* N64_Rdp_Row(int y) {
-    return (const uint16_t*)((uint8_t*)UncachedAddr(rdp_color.buffer) + (size_t)y * rdp_color.stride);
+    // cached view: the whole layer was invalidated by N64_Rdp_FrameActive
+    return (const uint16_t*)((uint8_t*)rdp_color.buffer + (size_t)y * rdp_color.stride);
 }
 
 void N64_Rdp_FrameDone(void) {

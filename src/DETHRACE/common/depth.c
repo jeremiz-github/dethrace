@@ -1,3 +1,6 @@
+#ifdef N64
+extern int gN64_fog_on;
+#endif
 #include "depth.h"
 
 #include "brender.h"
@@ -787,6 +790,11 @@ void DepthEffect(br_pixelmap* pRender_buffer, br_pixelmap* pDepth_buffer, br_act
 #ifdef DETHRACE_3DFX_PATCH
     if (gMaterial_fogging) {
         return;
+    }
+#endif
+#ifdef N64
+    if (gN64_fog_on) {
+        return; // the RDP applies the fog per pixel; the software depth buffer holds nothing for RDP pixels
     }
 #endif
     if (gProgram_state.current_depth_effect.type == eDepth_effect_darkness) {
