@@ -515,17 +515,32 @@ br_uint_32 DRPixelmapLoadMany(char* pFile_name, br_pixelmap** pPixelmaps, br_uin
     int number_loaded;
     int i;
 
-    number_loaded = BrPixelmapLoadMany(pFile_name, pPixelmaps, pNum);
 #ifdef N64
-    if (number_loaded == 0) {
-        FILE* probe = fopen(pFile_name, "rb");
-        struct mallinfo mi = mallinfo();
-        dr_dprintf("DRPixelmapLoadMany: no pixelmap from '%s' (fopen %s, size %d, heap in use %d KB)", pFile_name,
-            probe ? "ok" : "FAILED", probe ? (int)GetFileLength(probe) : -1, mi.uordblks / 1024);
-        if (probe) {
-            fclose(probe);
+    {
+        // optional files that do not exist are asked for again and again (an SD fopen costs milliseconds): remember misses
+        static unsigned misses[96];
+        static int nmiss;
+        unsigned h = 2166136261u;
+        const char* c;
+        int m;
+        for (c = pFile_name; *c; c++) {
+            h = (h ^ (unsigned char)*c) * 16777619u;
+        }
+        for (m = 0; m < nmiss; m++) {
+            if (misses[m] == h) {
+                return 0;
+            }
+        }
+        number_loaded = BrPixelmapLoadMany(pFile_name, pPixelmaps, pNum);
+        if (number_loaded == 0) {
+            if (nmiss < 96) {
+                misses[nmiss++] = h;
+            }
+            dr_dprintf("DRPixelmapLoadMany: no pixelmap from '%s'", pFile_name);
         }
     }
+#else
+    number_loaded = BrPixelmapLoadMany(pFile_name, pPixelmaps, pNum);
 #endif
     for (i = 0; i < number_loaded; i++) {
         pPixelmaps[i]->row_bytes = (pPixelmaps[i]->row_bytes + sizeof(tS32) - 1) & ~(sizeof(tS32) - 1);
