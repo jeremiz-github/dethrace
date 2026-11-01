@@ -344,6 +344,9 @@ static void n64_report_stats(void) {
             dr_dprintf("prof3 ms/frame: rdpq-call %d setmode %d fillvert %d",
                 (int)(gN64_prof_ticks[16] * ms_per_tick), (int)(gN64_prof_ticks[17] * ms_per_tick),
                 (int)(gN64_prof_ticks[18] * ms_per_tick));
+            dr_dprintf("prof4 ms/frame: mirror %d | loop-start..palette %d | after-render %d | whole loop iteration %d",
+                (int)(gN64_prof_ticks[19] * ms_per_tick), (int)(gN64_prof_ticks[20] * ms_per_tick),
+                (int)(gN64_prof_ticks[22] * ms_per_tick), (int)(gN64_prof_ticks[21] * ms_per_tick));
             memset(gN64_prof_ticks, 0, sizeof(uint32_t) * 24);
         }
         {

@@ -3416,6 +3416,12 @@ FILE* OldDRfopen(char* pFilename, char* pMode) {
 #else
     fp = fopen(pFilename, pMode);
 #endif
+#ifdef N64
+    if (fp != NULL) {
+        // text data files are read line by line: bigger blocks mean far fewer SD transfers
+        setvbuf(fp, NULL, _IOFBF, 8192);
+    }
+#endif
 
     if (fp == NULL) {
         if (gCD_fully_installed) {

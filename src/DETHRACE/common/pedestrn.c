@@ -2722,6 +2722,9 @@ void CreatePedestrian(FILE* pG, tPedestrian_instruction* pInstructions, int pIns
             }
         } while (the_pedestrian->ref_number != the_ref);
 
+#ifdef N64
+        dr_dprintf("ped type %d: found in PEDESTRN.TXT", pRef_num);
+#endif
         temp_float1 = GetAFloat(pG);
         the_pedestrian->height = temp_float1;
         the_pedestrian->credits_value = GetAnInt(pG);
@@ -2739,6 +2742,9 @@ void CreatePedestrian(FILE* pG, tPedestrian_instruction* pInstructions, int pIns
         the_pedestrian->image_index = GetAnInt(pG);
         LoadNShadeTables(&gPedestrians_storage_space, pG, 1);
         LoadNPixelmaps(&gPedestrians_storage_space, pG, 1);
+#ifdef N64
+        dr_dprintf("ped type %d: images loaded", pRef_num);
+#endif
         GetALineAndDontArgue(pG, s2);
         if (gPed_material == NULL) {
             str2 = strtok(s2, "\t ,/");

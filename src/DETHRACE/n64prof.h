@@ -20,6 +20,10 @@ enum {
     N64_PROF_TRACK,
     N64_PROF_NONTRACK,
     N64_PROF_EFFECTS,
+    N64_PROF_MIRROR = 19, /* 16..18 are used by n64_rdp.c */
+    N64_PROF_PRE = 20,
+    N64_PROF_TOTAL = 21,
+    N64_PROF_POST = 22,
     N64_PROF_COUNT
 };
 
@@ -33,6 +37,8 @@ void OS_N64_ProfEnd(int bucket);
         OS_N64_ProfEnd(bucket);   \
     } while (0)
 #else
+#define OS_N64_ProfBegin(b) ((void)0)
+#define OS_N64_ProfEnd(b) ((void)0)
 #define PROF(bucket, ...)  \
     do {                   \
         __VA_ARGS__;       \

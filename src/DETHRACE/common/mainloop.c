@@ -605,6 +605,8 @@ tRace_result MainGameLoop(void) {
     PrintMemoryDump(0, "ABOUT TO ENTER MAINLOOP");
 
     do {
+        OS_N64_ProfBegin(N64_PROF_TOTAL);
+        OS_N64_ProfBegin(N64_PROF_PRE);
         frame_start_time = GetTotalTime();
         CyclePollKeys();
         CheckSystemKeys(1);
@@ -630,6 +632,7 @@ tRace_result MainGameLoop(void) {
         }
         ResetLollipopQueue();
         MungePalette();
+        OS_N64_ProfEnd(N64_PROF_PRE);
         if (!gAction_replay_mode) {
             PROF(N64_PROF_OPPONENTS, MungeOpponents(gFrame_period));
             PollCarControls(gFrame_period);
@@ -689,6 +692,7 @@ tRace_result MainGameLoop(void) {
 #endif
             PROF(N64_PROF_RENDER_FRAME, RenderAFrame(1));
         }
+        OS_N64_ProfBegin(N64_PROF_POST);
         CheckReplayTurnOn();
         if (!gRecover_car
             && gProgram_state.prog_status == eProg_game_ongoing
@@ -734,6 +738,8 @@ tRace_result MainGameLoop(void) {
                 ;
             }
         }
+        OS_N64_ProfEnd(N64_PROF_POST);
+        OS_N64_ProfEnd(N64_PROF_TOTAL);
         if (!tried_to_allocate_AR) {
             tried_to_allocate_AR = 1;
             PrintMemoryDump(0, "JUST RENDERED 1ST STUFF");

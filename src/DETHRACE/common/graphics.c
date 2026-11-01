@@ -2122,6 +2122,9 @@ void RenderAFrame(int pDepth_mask_on) {
     }
 #endif
 
+#ifdef N64
+    OS_N64_ProfBegin(N64_PROF_MIRROR);
+#endif
     if (gMirror_on__graphics) {
 #ifdef DETHRACE_3DFX_PATCH
         if (gVoodoo_rush_mode >= 1) {
@@ -2176,6 +2179,9 @@ void RenderAFrame(int pDepth_mask_on) {
         BrMatrix34Copy(&gRearview_camera->t.t.mat, &old_mirror_cam_matrix);
         gRendering_mirror = 0;
     }
+#ifdef N64
+    OS_N64_ProfEnd(N64_PROF_MIRROR);
+#endif
     if (gMap_mode) {
         if (gNet_mode == eNet_mode_none) {
             GetTimerString(the_text, 0);
