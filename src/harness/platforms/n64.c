@@ -295,6 +295,13 @@ static void N64_Harness_CreateWindow(const char* title, int width, int height, t
 
 static void N64_Harness_PaletteChanged(br_colour entries[256]) {
     int i;
+    static br_colour last_entries[256];
+    static int have_last;
+    if (have_last && memcmp(last_entries, entries, sizeof(last_entries)) == 0) {
+        return; // same palette again: nothing to convert or re-upload
+    }
+    memcpy(last_entries, entries, sizeof(last_entries));
+    have_last = 1;
     for (i = 0; i < 256; i++) {
         converted_palette[i] = (uint16_t)(((BR_RED(entries[i]) >> 3) << 11)
             | ((BR_GRN(entries[i]) >> 3) << 6)

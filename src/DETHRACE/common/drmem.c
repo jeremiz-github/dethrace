@@ -296,6 +296,9 @@ void MAMSInitMem(void) {
 // IDA: void __usercall PrintMemoryDump(int pFlags@<EAX>, char *pTitle@<EDX>)
 // FUNCTION: CARM95 0x00463de4
 void PrintMemoryDump(int pFlags, char* pTitle) {
+#ifdef N64
+    dr_dprintf("load stage: %s", pTitle ? pTitle : "?");
+#endif
 }
 
 #ifdef N64

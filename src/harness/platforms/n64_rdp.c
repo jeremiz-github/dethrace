@@ -27,6 +27,8 @@ static int rdp_attached = 0;   // rdpq_attach is active
 static int rdp_cleared = 0;    // colour+z were cleared this frame
 static int rdp_have_frame = 0; // something was drawn this frame (compose needed)
 static int rdp_first_ox, rdp_first_oy, rdp_first_w, rdp_first_h;
+static int rdp_scene_tris0;
+static int rdp_snap_valid;     // snapshot still describes the 8-bit screen (only tiny scenes happened since)
 static int rdp_ox, rdp_oy;     // position of the current scene in the back screen
 static uint16_t rdp_tlut[256] __attribute__((aligned(8)));
 static int rdp_tlut_dirty = 1;
@@ -194,8 +196,9 @@ int N64_Rdp_BeginScene(void* pixels, int row_bytes, int w, int h) {
         if (rdp_snap == NULL) {
             rdp_snap = (uint8_t*)malloc(SCREEN_W * SCREEN_H);
         }
-        if (rdp_snap != NULL) {
+        if (rdp_snap != NULL && !rdp_snap_valid) {
             int yy;
+            rdp_snap_valid = 1;
             rdp_snap_w = w;
             rdp_snap_h = h;
             for (yy = 0; yy < h; yy++) {
@@ -212,6 +215,7 @@ int N64_Rdp_BeginScene(void* pixels, int row_bytes, int w, int h) {
             rdpq_attach(&rdp_color, &rdp_zbuf);
         }
         rdp_attached = 1;
+        rdp_scene_tris0 = gN64_rdp_tris;
         bb_x0 = 100000; bb_y0 = 100000; bb_x1 = -100000; bb_y1 = -100000;
         memset(blend_tiles, 0, sizeof(blend_tiles));
         rdp_base_mode();
@@ -478,6 +482,9 @@ void N64_Rdp_EndScene(uint8_t* pixels, int row_bytes, int w, int h) {
         rdpq_detach_wait();
         gN64_stage = 13;
         rdp_attached = 0;
+        if (gN64_rdp_tris - rdp_scene_tris0 > 16) {
+            rdp_snap_valid = 0; // a real scene changed the picture: the next one needs a fresh snapshot
+        }
         rdp_ring_next = 0;
         for (ci = 0; ci < 16; ci++) {
             if (canary[ci] != 0xC0DE0000u + ci) {
@@ -569,6 +576,7 @@ void N64_Rdp_FrameDone(void) {
     }
     rdp_have_frame = 0;
     rdp_cleared = 0;
+    rdp_snap_valid = 0;
 }
 
 // ---- smoke on the RDP layer ----

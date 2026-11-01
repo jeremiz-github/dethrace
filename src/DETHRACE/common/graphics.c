@@ -951,7 +951,9 @@ void DRSetPalette3(br_pixelmap* pThe_palette, int pSet_current_palette) {
 
 // IDA: void __usercall DRSetPalette2(br_pixelmap *pThe_palette@<EAX>, int pSet_current_palette@<EDX>)
 // FUNCTION: CARM95 0x004b3b53
+static unsigned gPalette_set_counter;
 void DRSetPalette2(br_pixelmap* pThe_palette, int pSet_current_palette) {
+    gPalette_set_counter++;
     ((br_int_32*)pThe_palette->pixels)[0] = 0;
     if (pSet_current_palette) {
 #ifdef DETHRACE_FIX_BUGS
@@ -2392,7 +2394,20 @@ void SetFadedPalette(int pDegree) {
     int j;
     br_pixelmap* the_palette;
     char* the_pixels;
-
+#ifdef N64
+    // called every frame with the same degree while nothing fades: skip the 1024 Darken() calls and the palette upload
+    static int last_degree = -1;
+    static unsigned last_counter;
+    static unsigned char last_src[0x400];
+    static int last_faded = -1;
+    if (pDegree == last_degree && last_counter == gPalette_set_counter && last_faded == gFaded_palette
+        && memcmp(last_src, gCurrent_palette->pixels, 0x400u) == 0) {
+        return;
+    }
+    memcpy(last_src, gCurrent_palette->pixels, 0x400u);
+    last_degree = pDegree;
+    last_faded = gFaded_palette;
+#endif
     memcpy(gScratch_pixels, gCurrent_palette->pixels, 0x400u);
 
     for (j = 0; j < 256; j++) {
@@ -2402,6 +2417,9 @@ void SetFadedPalette(int pDegree) {
         Darken((tU8*)&gScratch_pixels[4 * j] + 3, pDegree);
     }
     DRSetPalette2(gScratch_palette, 0);
+#ifdef N64
+    last_counter = gPalette_set_counter;
+#endif
 }
 
 // IDA: void __cdecl FadePaletteDown()
