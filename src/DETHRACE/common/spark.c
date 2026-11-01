@@ -1,3 +1,7 @@
+#ifdef N64
+extern int gN64_use_rdp;
+extern int N64_Rdp_Smoke(unsigned char* scr, const unsigned char* shade, int row, int zs);
+#endif
 #include "spark.h"
 #include "brender.h"
 #include "car.h"
@@ -1030,6 +1034,16 @@ void SmokeLine(int l, int x, br_scalar zbuff, int r_squared, tU8* scr_ptr, tU16*
     shade_offset_int = shade_offset * 65536.0f;
 
     for (i = 0; i < l; i++) {
+#ifdef N64
+        if (gN64_use_rdp && N64_Rdp_Smoke(scr_ptr, shade_ptr, (((shade_offset_int - r_squared * r_multiplier_int) >> 8) & 0xffffff00) >> 8, z)) {
+            r_squared += x;
+            scr_ptr++;
+            x++;
+            depth_ptr++;
+            r_squared += x;
+            continue;
+        }
+#endif
         if (*depth_ptr > z) {
 #if defined(DETHRACE_FIX_BUGS)
             offset = ((shade_offset_int - r_squared * r_multiplier_int) >> 8) & 0xffffff00;

@@ -107,6 +107,8 @@ static void rdp_base_mode(void) {
 static uint8_t blend_tiles[13 * 20];
 static uint8_t* rdp_pix;
 static int rdp_pix_row, rdp_pix_w, rdp_pix_h;
+static struct { uint8_t* pix; int row, w, h, ox, oy; } rdp_views[2];
+static int rdp_view_next;
 
 // Before a blended triangle is drawn: the RDP layer must hold the software image under it, otherwise the blend
 // mixes with black. Tiles of RDP-uncovered pixels (alpha bit 0) get the 8-bit image's colour (alpha stays 0).
@@ -226,6 +228,19 @@ int N64_Rdp_BeginScene(void* pixels, int row_bytes, int w, int h) {
     }
     rdp_ox = ox;
     rdp_oy = oy;
+    {
+        int si, slot = -1;
+        for (si = 0; si < 2; si++) {
+            if (rdp_views[si].pix == (uint8_t*)pixels) slot = si;
+        }
+        if (slot < 0) slot = rdp_view_next ^= 1;
+        rdp_views[slot].pix = (uint8_t*)pixels;
+        rdp_views[slot].row = row_bytes;
+        rdp_views[slot].w = w;
+        rdp_views[slot].h = h;
+        rdp_views[slot].ox = ox;
+        rdp_views[slot].oy = oy;
+    }
     rdp_pix = (uint8_t*)pixels;
     rdp_pix_row = row_bytes;
     rdp_pix_w = w;
@@ -539,4 +554,134 @@ void N64_Rdp_FrameDone(void) {
     }
     rdp_have_frame = 0;
     rdp_cleared = 0;
+}
+
+// ---- smoke on the RDP layer ----
+// The game's smoke (SmokeLine) shades the 8-bit screen through a shade table, but pixels drawn by the RDP live
+// in the RGBA16 layer (the 8-bit screen holds 0 there). For those pixels the table row is fitted as
+// out = in * (1 - k) + T * k and applied to the RGBA16 colour, with the depth test done on the RDP z buffer.
+typedef struct {
+    const uint8_t* tab;
+    unsigned serial;
+    uint8_t valid[32];
+    float k[32];
+    float T[32][3];
+} smoke_fit;
+static smoke_fit smoke_fits[4];
+static int smoke_fit_next;
+static int smoke_dB = -1, smoke_dW;
+static unsigned smoke_pal_serial;
+
+static int smoke_luma(uint16_t c) {
+    return ((c >> 11) & 31) * 77 + ((c >> 6) & 31) * 150 + ((c >> 1) & 31) * 29;
+}
+
+static void smoke_rgb(uint16_t c, float* o) {
+    o[0] = (float)((c >> 11) & 31);
+    o[1] = (float)((c >> 6) & 31);
+    o[2] = (float)((c >> 1) & 31);
+}
+
+int N64_Rdp_Smoke(uint8_t* scr, const uint8_t* shade, int row, int zs) {
+    int vi, off = 0, x, y;
+    uint16_t* dst;
+    const uint16_t* zp;
+    smoke_fit* F = NULL;
+    uint16_t c;
+    float rgb[3];
+    int n;
+
+    if (!rdp_surfaces_ok || row < 0 || row >= 32) {
+        return 0;
+    }
+    for (vi = 0; vi < 2; vi++) {
+        if (rdp_views[vi].pix != NULL && scr >= rdp_views[vi].pix && scr < rdp_views[vi].pix + (size_t)rdp_views[vi].h * rdp_views[vi].row) {
+            break;
+        }
+    }
+    if (vi == 2) {
+        return 0;
+    }
+    off = (int)(scr - rdp_views[vi].pix);
+    y = off / rdp_views[vi].row;
+    x = off - y * rdp_views[vi].row;
+    if (x >= rdp_views[vi].w) {
+        return 0;
+    }
+    x += rdp_views[vi].ox;
+    y += rdp_views[vi].oy;
+    if (x < 0 || y < 0 || x >= SCREEN_W || y >= SCREEN_H) {
+        return 0;
+    }
+    dst = (uint16_t*)((uint8_t*)UncachedAddr(rdp_color.buffer) + (size_t)y * rdp_color.stride) + x;
+    c = *dst;
+    if (!(c & 1) || *scr != 0) {
+        return 0; // not an RDP pixel: software path
+    }
+    zp = (const uint16_t*)((uint8_t*)UncachedAddr(rdp_zbuf.buffer) + (size_t)y * rdp_zbuf.stride) + x;
+    {
+        // decompress the RDP z (3-bit exponent, 11-bit mantissa) to our 16-bit depth scale
+        static const uint8_t sh[8] = { 6, 5, 4, 3, 2, 1, 0, 0 };
+        static const uint32_t ad[8] = { 0x00000, 0x20000, 0x30000, 0x38000, 0x3c000, 0x3e000, 0x3f000, 0x3f800 };
+        uint16_t v = *zp;
+        int e = (v >> 13) & 7;
+        uint32_t z18 = ((uint32_t)((v >> 2) & 0x7ff) << sh[e]) + ad[e];
+        int z16 = (int)(z18 * (65535.0f / 131068.0f));
+        if (z16 <= zs) {
+            return 1; // in front of the smoke: untouched
+        }
+    }
+    if (smoke_dB < 0 || smoke_pal_serial != rdp_pal_serial) {
+        int i, lmin = 1 << 30, lmax = -1;
+        for (i = 0; i < 256; i++) {
+            int l = smoke_luma(rdp_tlut[i] | 1);
+            if (l < lmin) { lmin = l; smoke_dB = i; }
+            if (l > lmax) { lmax = l; smoke_dW = i; }
+        }
+        smoke_pal_serial = rdp_pal_serial;
+        memset(smoke_fits, 0, sizeof(smoke_fits));
+    }
+    for (n = 0; n < 4; n++) {
+        if (smoke_fits[n].tab == shade) {
+            F = &smoke_fits[n];
+            break;
+        }
+    }
+    if (F == NULL) {
+        F = &smoke_fits[smoke_fit_next];
+        smoke_fit_next = (smoke_fit_next + 1) & 3;
+        memset(F, 0, sizeof(*F));
+        F->tab = shade;
+    }
+    if (!F->valid[row]) {
+        float B[3], W[3], oB[3], oW[3], ks = 0;
+        int ch, kc = 0;
+        smoke_rgb(rdp_tlut[smoke_dB] | 1, B);
+        smoke_rgb(rdp_tlut[smoke_dW] | 1, W);
+        smoke_rgb(rdp_tlut[shade[row * 256 + smoke_dB]] | 1, oB);
+        smoke_rgb(rdp_tlut[shade[row * 256 + smoke_dW]] | 1, oW);
+        for (ch = 0; ch < 3; ch++) {
+            if (W[ch] - B[ch] > 4.0f) {
+                ks += 1.0f - (oW[ch] - oB[ch]) / (W[ch] - B[ch]);
+                kc++;
+            }
+        }
+        F->k[row] = kc ? ks / (float)kc : 0.0f;
+        if (F->k[row] < 0) F->k[row] = 0;
+        if (F->k[row] > 1) F->k[row] = 1;
+        for (ch = 0; ch < 3; ch++) {
+            float t = F->k[row] > 0.02f ? (oB[ch] - B[ch] * (1.0f - F->k[row])) / F->k[row] : 0;
+            F->T[row][ch] = t < 0 ? 0 : (t > 31 ? 31 : t);
+        }
+        F->valid[row] = 1;
+    }
+    smoke_rgb(c, rgb);
+    {
+        float k = F->k[row], r, g, b;
+        r = rgb[0] * (1 - k) + F->T[row][0] * k + 0.5f;
+        g = rgb[1] * (1 - k) + F->T[row][1] * k + 0.5f;
+        b = rgb[2] * (1 - k) + F->T[row][2] * k + 0.5f;
+        *dst = (uint16_t)(((int)r << 11) | ((int)g << 6) | ((int)b << 1) | 1);
+    }
+    return 1;
 }

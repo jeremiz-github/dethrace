@@ -767,6 +767,16 @@ void N64_UpdateFog(void) {
     gN64_fog_z0 = (float)(0x10000 - (1 << start)) / 65535.0f;
     gN64_fog_k = k;
     gN64_fog_on = 1;
+    {
+        static int last_sig;
+        int sig = (int)(k * 100) + gN64_fog_rgb[0] * 1000 + start * 7 + end * 131 + (gProgram_state.current_depth_effect.type << 20);
+        if (sig != last_sig) {
+            last_sig = sig;
+            dr_dprintf("fog fit: type %d start %d end %d power %d row %d -> k %.2f z0 %.3f rgb %d,%d,%d (white probe %04x->%04x, dark probe %04x->%04x)",
+                (int)gProgram_state.current_depth_effect.type, start, end, power, row, k, gN64_fog_z0, gN64_fog_rgb[0], gN64_fog_rgb[1], gN64_fog_rgb[2],
+                c0w, c1w, c0b, c1b);
+        }
+    }
 }
 #endif
 
