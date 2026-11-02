@@ -637,7 +637,7 @@ static const tN64_option gN64_option_defs[] = {
     { "cutscenes", "Cutscenes (FMV)", 0, 1, 0, kOffOn },
     { "simple", "Car simplification", 0, 4, 3, NULL },
     { "yon", "Draw distance", 0, 7, 3, kYon },
-    { "lomem", "Low-memory mode", 0, 1, 1, kOffOn },
+    { "lomem2", "Low-memory mode", 0, 1, 0, kOffOn },
     { "spam", "Spam frittering", 0, 1, 0, kOffOn },
     { "physics", "Physics steps/frm", 1, 5, 3, NULL },
     { "cpuprof", "CPU profiler", 0, 1, 1, kOffOn },
@@ -893,7 +893,7 @@ void OS_N64_BootMenu(char* args, size_t size) {
     gN64_physics_steps = n64_opt("physics");
 
     snprintf(args, size, "-noreplay%s%s -simple %d -yon %s%s%s%s",
-        n64_opt("lomem") ? " -lomem" : "",
+        n64_opt("lomem2") ? " -lomem" : "",
         n64_opt("sound") ? "" : " -nosound",
         n64_opt("simple"),
         kYon[n64_opt("yon")],

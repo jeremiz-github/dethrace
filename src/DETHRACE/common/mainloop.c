@@ -634,7 +634,20 @@ tRace_result MainGameLoop(void) {
         MungePalette();
         OS_N64_ProfEnd(N64_PROF_PRE);
         if (!gAction_replay_mode) {
+#ifdef N64
+            {
+                // opponent AI runs every other frame, with the accumulated frame period (it costs up to ~30 ms)
+                static tU32 oppo_acc;
+                static int oppo_skip;
+                oppo_acc += gFrame_period;
+                if ((oppo_skip ^= 1) == 0) {
+                    PROF(N64_PROF_OPPONENTS, MungeOpponents(oppo_acc));
+                    oppo_acc = 0;
+                }
+            }
+#else
             PROF(N64_PROF_OPPONENTS, MungeOpponents(gFrame_period));
+#endif
             PollCarControls(gFrame_period);
         }
         PollCameraControls(camera_period);
