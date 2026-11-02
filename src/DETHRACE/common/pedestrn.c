@@ -2684,7 +2684,15 @@ void CreatePedestrian(FILE* pG, tPedestrian_instruction* pInstructions, int pIns
     the_pedestrian->cloned = 0;
     if (!pForce_read) {
         for (i = 0; i < gPed_count - 1; i++) {
-            if (gPedestrian_array[i].ref_number == the_pedestrian->ref_number) {
+            if (gPedestrian_array[i].ref_number == the_pedestrian->ref_number
+#ifdef N64
+                // austerity mode loads every power-up as type 100 (or 146) but stores the original number afterwards:
+                // without this each power-up re-read its sprites from the SD card (500 ms each)
+                || (gAusterity_mode && pRef_num >= 100
+                    && gPedestrian_array[i].ref_number >= 100
+                    && (gPedestrian_array[i].ref_number == 114) == (pRef_num == 114))
+#endif
+            ) {
                 *the_pedestrian = gPedestrian_array[i];
                 the_pedestrian->cloned = 1;
                 break;

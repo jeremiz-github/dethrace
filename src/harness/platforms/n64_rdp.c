@@ -466,7 +466,30 @@ void N64_Rdp_TriTex(const float* a, const float* b, const float* c) {
 }
 
 // End of a 3D scene: wait for the RDP, then mark every covered pixel as index 0 in the 8-bit buffer.
+static void rdp_end_scene_real(uint8_t* pixels, int row_bytes, int w, int h);
+static int rdp_deferred;
+static uint8_t* rdp_def_pixels;
+static int rdp_def_row, rdp_def_w, rdp_def_h;
+
+// Tiny scenes (the shadows: 2 triangles each) do not stop the RDP and do not merge into the 8-bit screen at once:
+// the work is deferred until a scene with real content ends (or the frame is done), so the RDP and the CPU overlap.
 void N64_Rdp_EndScene(uint8_t* pixels, int row_bytes, int w, int h) {
+    if (!rdp_attached) {
+        return;
+    }
+    if (gN64_rdp_tris - rdp_scene_tris0 <= 16) {
+        rdp_deferred = 1;
+        rdp_def_pixels = pixels;
+        rdp_def_row = row_bytes;
+        rdp_def_w = w;
+        rdp_def_h = h;
+        return;
+    }
+    rdp_deferred = 0;
+    rdp_end_scene_real(pixels, row_bytes, w, h);
+}
+
+static void rdp_end_scene_real(uint8_t* pixels, int row_bytes, int w, int h) {
     int x, y;
     if (!rdp_attached) {
         return;
@@ -552,6 +575,10 @@ void N64_Rdp_EndScene(uint8_t* pixels, int row_bytes, int w, int h) {
 
 // Swap(): is there 3D to merge this frame?
 int N64_Rdp_FrameActive(void) {
+    if (rdp_deferred) {
+        rdp_deferred = 0;
+        rdp_end_scene_real(rdp_def_pixels, rdp_def_row, rdp_def_w, rdp_def_h);
+    }
     if (rdp_have_frame && rdp_surfaces_ok) {
         data_cache_hit_invalidate(CachedAddr(rdp_color.buffer), (size_t)rdp_color.stride * rdp_color.height);
         return 1;
@@ -566,6 +593,10 @@ const uint16_t* N64_Rdp_Row(int y) {
 }
 
 void N64_Rdp_FrameDone(void) {
+    if (rdp_deferred) {
+        rdp_deferred = 0;
+        rdp_end_scene_real(rdp_def_pixels, rdp_def_row, rdp_def_w, rdp_def_h);
+    }
     if (rdp_attached || gN64_rdp_tris) {
         RDPLOG("frame done (attached %d, tris %d)", rdp_attached, gN64_rdp_tris);
     }
