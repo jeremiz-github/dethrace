@@ -1,5 +1,6 @@
 #ifdef N64
 extern void N64_UpdateFog(void);
+extern int gN64_use_rdp;
 #endif
 #include "graphics.h"
 #include "n64prof.h"
@@ -2069,6 +2070,10 @@ void RenderAFrame(int pDepth_mask_on) {
     for (i = 0; i < (gMap_mode && !gSmall_frames_are_slow ? 3 : 1); i++)
 #endif
     {
+#ifdef N64
+        // With the RDP the shadows are blended into the RDP layer: they must come after the ground has been drawn
+        if (!gN64_use_rdp)
+#endif
         PROF(N64_PROF_SHADOWS, RenderShadows(gUniverse_actor, &gProgram_state.track_spec, gCamera, &gCamera_to_world));
 #ifdef N64
         OS_N64_ProfBegin(N64_PROF_SCENE_3D);
@@ -2097,6 +2102,9 @@ void RenderAFrame(int pDepth_mask_on) {
         OS_N64_ProfEnd(N64_PROF_EFFECTS);
 #ifdef N64
         OS_N64_ProfEnd(N64_PROF_SCENE_3D);
+        if (gN64_use_rdp) {
+            PROF(N64_PROF_SHADOWS, RenderShadows(gUniverse_actor, &gProgram_state.track_spec, gCamera, &gCamera_to_world));
+        }
 #endif
     }
 #ifdef DETHRACE_3DFX_PATCH

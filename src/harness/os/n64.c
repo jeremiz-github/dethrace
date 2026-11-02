@@ -815,7 +815,7 @@ void OS_N64_SamplerReport(void (*print)(const char* fmt, ...)) {
         }
     }
     gN64_sample_total = 0;
-    for (shown = 0; shown < 22; shown++) {
+    for (shown = 0; shown < 44; shown++) {
         int best = -1;
         for (j = 0; j < gN64_sampler_tab_n; j++) {
             if (gN64_sampler_tab[j].count > 0 && (best < 0 || gN64_sampler_tab[j].count > gN64_sampler_tab[best].count)) {
