@@ -616,6 +616,7 @@ unsigned int OS_N64_Millis(void) {
 
 int gN64_opponent_limit = -1;  // read by SelectOpponents()
 int gN64_texture_quality = 0;
+int gN64_full_in_race = 1;    // low-memory (austerity) behaviour for the menus only, normal game while racing
 int gN64_physics_steps = 3;    // max physics substeps per frame (read by ApplyPhysicsToCars)  // read by AddPixelmapToStorage()
 
 typedef struct {
@@ -637,7 +638,7 @@ static const tN64_option gN64_option_defs[] = {
     { "cutscenes", "Cutscenes (FMV)", 0, 1, 0, kOffOn },
     { "simple", "Car simplification", 0, 4, 3, NULL },
     { "yon", "Draw distance", 0, 7, 3, kYon },
-    { "lomem2", "Low-memory mode", 0, 1, 0, kOffOn },
+    { "fullrace", "Full game in race", 0, 1, 1, kOffOn },
     { "spam", "Spam frittering", 0, 1, 0, kOffOn },
     { "physics", "Physics steps/frm", 1, 5, 3, NULL },
     { "cpuprof", "CPU profiler", 0, 1, 1, kOffOn },
@@ -891,9 +892,13 @@ void OS_N64_BootMenu(char* args, size_t size) {
         gN64_use_rdp = n64_opt("renderer");
     }
     gN64_physics_steps = n64_opt("physics");
+    {
+        extern int gN64_full_in_race;
+        gN64_full_in_race = n64_opt("fullrace");
+    }
 
     snprintf(args, size, "-noreplay%s%s -simple %d -yon %s%s%s%s",
-        n64_opt("lomem2") ? " -lomem" : "",
+        " -lomem",
         n64_opt("sound") ? "" : " -nosound",
         n64_opt("simple"),
         kYon[n64_opt("yon")],

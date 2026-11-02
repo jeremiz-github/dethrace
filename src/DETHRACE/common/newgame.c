@@ -422,6 +422,14 @@ int DoOnePlayerStart(void) {
             if (SelectSkillLevel()) {
                 DoGoToRaceAnimation();
                 StartLoadingScreen();
+#ifdef N64
+                {
+                    extern int gN64_full_in_race;
+                    if (gN64_full_in_race) {
+                        gAusterity_mode = 0; // the menus ran in low-memory mode; the race itself runs the full game
+                    }
+                }
+#endif
                 AboutToLoadFirstCar();
                 PrintMemoryDump(0, "JUST BEFORE LOADING YOUR CAR");
                 SwitchToRealResolution();
