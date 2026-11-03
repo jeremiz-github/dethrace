@@ -15,6 +15,21 @@ extern int gPipe_reg_snap_after_our_car;
 extern int gAction_replay_mode;
 extern int gDefault_engine_noise_index;
 extern int gAusterity_mode;
+// What the low-memory ("austerity") mode switches off, split into separate features
+#ifdef N64
+extern int gN64_feat_damage, gN64_feat_cockpit, gN64_feat_peds, gN64_feat_pratcam, gN64_feat_blends;
+#define FEAT_DAMAGE() (gN64_feat_damage)
+#define FEAT_COCKPIT() (gN64_feat_cockpit)
+#define FEAT_PEDS() (gN64_feat_peds)
+#define FEAT_PRATCAM() (gN64_feat_pratcam)
+#define FEAT_BLENDS() (gN64_feat_blends)
+#else
+#define FEAT_DAMAGE() (!gAusterity_mode)
+#define FEAT_COCKPIT() (!gAusterity_mode)
+#define FEAT_PEDS() (!gAusterity_mode)
+#define FEAT_PRATCAM() (!gAusterity_mode)
+#define FEAT_BLENDS() (!gAusterity_mode)
+#endif
 extern int gSausage_override;
 extern int gAustere_override;
 extern int gSound_override;

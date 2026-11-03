@@ -733,14 +733,6 @@ void DoProgram(void) {
             if (gGame_to_load >= 0) {
                 DoLoadGame();
             } else {
-#ifdef N64
-                {
-                    extern int gN64_full_in_race;
-                    if (gN64_full_in_race) {
-                        gAusterity_mode = 1; // back to the menus: low-memory behaviour
-                    }
-                }
-#endif
                 DoMainMenuScreen(MAIN_MENU_TIMEOUT, 0, 0);
             }
             break;

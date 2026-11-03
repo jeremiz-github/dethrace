@@ -2688,7 +2688,7 @@ void CreatePedestrian(FILE* pG, tPedestrian_instruction* pInstructions, int pIns
 #ifdef N64
                 // austerity mode loads every power-up as type 100 (or 146) but stores the original number afterwards:
                 // without this each power-up re-read its sprites from the SD card (500 ms each)
-                || (gAusterity_mode && pRef_num >= 100
+                || (!FEAT_PEDS() && pRef_num >= 100
                     && gPedestrian_array[i].ref_number >= 100
                     && (gPedestrian_array[i].ref_number == 114) == (pRef_num == 114))
 #endif
@@ -2986,12 +2986,12 @@ void LoadInPedestrians(FILE* pF, int pSubs_count, tPed_subs* pSubs_array) {
     gPed_count = 0;
     gLast_ped_splat_time = 0;
     temp_int = GetAnInt(pF);
-    if (gAusterity_mode) {
+    if (!FEAT_PEDS()) {
         ped_count = temp_int / 2 + 2;
     } else {
         ped_count = temp_int;
     }
-    gPedestrian_array = BrMemAllocate(sizeof(tPedestrian_data) * (ped_count + (gAusterity_mode ? 0 : 200)), kMem_ped_array_stain);
+    gPedestrian_array = BrMemAllocate(sizeof(tPedestrian_data) * (ped_count + (!FEAT_PEDS() ? 0 : 200)), kMem_ped_array_stain);
     if (PDKeyDown(KEY_CTRL_ANY) && PDKeyDown(KEY_SHIFT_ANY) && PDKeyDown(KEY_A)) {
         check_for_duplicates = 1;
         DRS3StartSound(gEffects_outlet, 3202);
@@ -3066,7 +3066,7 @@ void LoadInPedestrians(FILE* pF, int pSubs_count, tPed_subs* pSubs_array) {
                 break;
             }
         }
-        if (gAusterity_mode) {
+        if (!FEAT_PEDS()) {
             if (knock_out & 1 && ref_number != FLAG_WAVING_BASTARD_REF) {
                 i--;
                 ped_count--;
@@ -3087,7 +3087,7 @@ void LoadInPedestrians(FILE* pF, int pSubs_count, tPed_subs* pSubs_array) {
             }
         }
         if (instruc_count > 0) {
-            if (gAusterity_mode && ref_number >= 100) {
+            if (!FEAT_PEDS() && ref_number >= 100) {
                 // swap MINE for LANDMINE and only one type of powerup ?
                 if (ref_number == 114) {
                     CreatePedestrian(g, instructions, instruc_count, init_instruc, 146, 0);

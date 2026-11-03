@@ -616,7 +616,7 @@ unsigned int OS_N64_Millis(void) {
 
 int gN64_opponent_limit = -1;  // read by SelectOpponents()
 int gN64_texture_quality = 0;
-int gN64_full_in_race = 1;    // low-memory (austerity) behaviour for the menus only, normal game while racing
+int gN64_feat_damage = 1, gN64_feat_cockpit = 1, gN64_feat_peds = 1, gN64_feat_pratcam, gN64_feat_blends; // what low-memory mode would switch off
 int gN64_physics_steps = 3;    // max physics substeps per frame (read by ApplyPhysicsToCars)  // read by AddPixelmapToStorage()
 
 typedef struct {
@@ -638,7 +638,11 @@ static const tN64_option gN64_option_defs[] = {
     { "cutscenes", "Cutscenes (FMV)", 0, 1, 0, kOffOn },
     { "simple", "Car simplification", 0, 4, 3, NULL },
     { "yon", "Draw distance", 0, 7, 3, kYon },
-    { "fullrace", "Full game in race", 0, 1, 1, kOffOn },
+    { "damage", "Car damage (crush)", 0, 1, 1, kOffOn },
+    { "cockpit", "Cockpit view", 0, 1, 1, kOffOn },
+    { "peds", "Pedestrian variety", 0, 1, 1, kOffOn },
+    { "pratcam", "Pratcam (face)", 0, 1, 0, kOffOn },
+    { "blends", "Track transparencies", 0, 1, 0, kOffOn },
     { "spam", "Spam frittering", 0, 1, 0, kOffOn },
     { "physics", "Physics steps/frm", 1, 5, 3, NULL },
     { "cpuprof", "CPU profiler", 0, 1, 1, kOffOn },
@@ -892,10 +896,11 @@ void OS_N64_BootMenu(char* args, size_t size) {
         gN64_use_rdp = n64_opt("renderer");
     }
     gN64_physics_steps = n64_opt("physics");
-    {
-        extern int gN64_full_in_race;
-        gN64_full_in_race = n64_opt("fullrace");
-    }
+    gN64_feat_damage = n64_opt("damage");
+    gN64_feat_cockpit = n64_opt("cockpit");
+    gN64_feat_peds = n64_opt("peds");
+    gN64_feat_pratcam = n64_opt("pratcam");
+    gN64_feat_blends = n64_opt("blends");
 
     snprintf(args, size, "-noreplay%s%s -simple %d -yon %s%s%s%s",
         " -lomem",

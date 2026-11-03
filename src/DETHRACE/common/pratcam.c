@@ -86,7 +86,7 @@ void TogglePratcam(void) {
     tU32 the_time;
     tU32 time_diff;
 
-    if (gAusterity_mode) {
+    if (!FEAT_PRATCAM()) {
         NewTextHeadupSlot(eHeadupSlot_misc, 0, 1000, -4, GetMiscString(kMiscString_NOT_ENOUGH_MEMORY));
     } else {
         if (gWhirr_noise == 0 || !DRS3SoundStillPlaying(gWhirr_noise)) {
@@ -120,7 +120,7 @@ void LoadPratcam(char* pFolder_name) {
     char* str;
     char num_str[256];
 
-    if (gAusterity_mode) {
+    if (!FEAT_PRATCAM()) {
         return;
     }
     PathCat(folder_path, gApplication_path, gGraf_specs[gGraf_spec_index].data_dir_name);
@@ -318,7 +318,7 @@ void PratcamEvent(int pIndex) {
     }
 #if defined(DETHRACE_FIX_BUGS)
     // In low memory mode, `gPratcam_sequences`is not allocated and thus unsafe to access
-    if (gAusterity_mode) {
+    if (!FEAT_PRATCAM()) {
         return;
     }
 #endif
@@ -360,7 +360,7 @@ int HighResPratBufferHeight(void) {
 void InitPratcam(void) {
     void* the_pixels;
 
-    if (gAusterity_mode) {
+    if (!FEAT_PRATCAM()) {
         return;
     }
     gWhirr_noise = 0;
@@ -410,7 +410,7 @@ void DisposePratcam(void) {
     int k;
     int l;
 
-    if (gAusterity_mode) {
+    if (!FEAT_PRATCAM()) {
         return;
     }
     if (gWhirr_noise != 0) {
@@ -453,7 +453,7 @@ void DoPratcam(tU32 pThe_time) {
     br_pixelmap* right_image;
     br_pixelmap* left_image;
 
-    if (gAusterity_mode) {
+    if (!FEAT_PRATCAM()) {
         return;
     }
     if (gNet_mode != eNet_mode_none) {

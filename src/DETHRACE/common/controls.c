@@ -795,7 +795,7 @@ void NumberKey9(void) {
 // FUNCTION: CARM95 0x004a108d
 void LookLeft(void) {
 
-    if (gAusterity_mode) {
+    if (!FEAT_COCKPIT()) {
         NewTextHeadupSlot(eHeadupSlot_misc, 0, 1000, -kFont_MEDIUMHD, GetMiscString(kMiscString_NOT_ENOUGH_MEMORY));
     } else {
         PratcamEvent(kPratcam_cockpit_head_left);
@@ -836,7 +836,7 @@ void LookForward(void) {
 // FUNCTION: CARM95 0x004a11b2
 void LookRight(void) {
 
-    if (gAusterity_mode) {
+    if (!FEAT_COCKPIT()) {
         NewTextHeadupSlot(eHeadupSlot_misc, 0, 1000, -kFont_MEDIUMHD, GetMiscString(kMiscString_NOT_ENOUGH_MEMORY));
     } else {
         PratcamEvent(kPratcam_cockpit_head_right);
@@ -1095,7 +1095,7 @@ void ToggleCockpit(void) {
     }
 
     if (!gMap_mode) {
-        if (gAusterity_mode && !gProgram_state.cockpit_on) {
+        if (!FEAT_COCKPIT() && !gProgram_state.cockpit_on) {
             NewTextHeadupSlot(eHeadupSlot_misc, 0, 1000, -kFont_MEDIUMHD, GetMiscString(kMiscString_NOT_ENOUGH_MEMORY));
             return;
         } else {

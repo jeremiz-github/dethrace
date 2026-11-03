@@ -60,7 +60,7 @@ void DisposeColumns(tTrack_spec* pTrack_spec) {
 
     DisposeActorMatrix(pTrack_spec, &pTrack_spec->columns, 0);
     DisposeActorMatrix(pTrack_spec, &pTrack_spec->lollipops, 0);
-    if (gAusterity_mode == 0) {
+    if (FEAT_BLENDS()) {
         DisposeActorMatrix(pTrack_spec, &pTrack_spec->blends, 1);
     }
     if (pTrack_spec->non_car_list != NULL && (0 < pTrack_spec->ampersand_digits)) {
@@ -212,7 +212,7 @@ br_uintptr_t FindNonCarsCB(br_actor* pActor, tTrack_spec* pTrack_spec) {
         pActor->type_data = NULL;
         return 0;
     } else {
-        if (pActor->model != NULL && !gAusterity_mode && pActor->identifier != NULL && pActor->identifier[0] != '&') {
+        if (pActor->model != NULL && FEAT_BLENDS() && pActor->identifier != NULL && pActor->identifier[0] != '&') {
             StripBlendedFaces(pActor, pActor->model);
         }
         return BrActorEnum(pActor, (br_actor_enum_cbfn*)FindNonCarsCB, pTrack_spec);
@@ -230,7 +230,7 @@ br_uintptr_t ProcessModelsCB(br_actor* pActor, tTrack_spec* pTrack_spec) {
         pActor->material = gDefault_track_material;
         pTrack_spec->columns[z][x] = pActor;
         gMr_blendy = NULL;
-        if (pActor->model && !gAusterity_mode) {
+        if (pActor->model && FEAT_BLENDS()) {
             StripBlendedFaces(pActor, pActor->model);
         }
         BrActorEnum(pActor, (br_actor_enum_cbfn*)FindNonCarsCB, pTrack_spec);

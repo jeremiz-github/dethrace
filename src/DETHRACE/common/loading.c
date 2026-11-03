@@ -1855,9 +1855,9 @@ void SetModelFlags(br_model* pModel, int pOwner) {
 
     if (pModel != NULL && pModel->nfaces != 0) {
 #if defined(DETHRACE_FIX_BUGS) /* Show Squad Car in the wreck gallery. */
-        if (!gAusterity_mode) {
+        if (FEAT_DAMAGE()) {
 #else
-        if (pOwner != OPPONENT_APC_IDX && !gAusterity_mode) {
+        if (pOwner != OPPONENT_APC_IDX && FEAT_DAMAGE()) {
 #endif
             pModel->flags |= BR_MODF_DONT_WELD | BR_MODF_KEEP_ORIGINAL | BR_MODF_UPDATEABLE;
             BrModelUpdate(pModel, BR_MODU_ALL);
@@ -1997,7 +1997,7 @@ void LoadCar(char* pCar_name, tDriver pDriver, tCar_spec* pCar_spec, int pOwner,
         for (j = 0; j < COUNT_OF(pCar_spec->cockpit_images); j++) {
             GetALineAndDontArgue(h, s);
             str = strtok(s, "\t ,/");
-            if (!gAusterity_mode) {
+            if (FEAT_COCKPIT()) {
                 the_image = LoadPixelmap(str);
                 if (the_image == NULL) {
                     FatalError(kFatalError_LoadCockpitImage);
@@ -2026,21 +2026,21 @@ void LoadCar(char* pCar_name, tDriver pDriver, tCar_spec* pCar_spec, int pOwner,
             PossibleService();
         }
         LoadSpeedo(h, 0, pCar_spec);
-        if (gAusterity_mode) {
+        if (!FEAT_COCKPIT()) {
             GetALineAndDontArgue(h, s);
         } else {
             LoadSpeedo(h, 1, pCar_spec);
         }
         PossibleService();
         LoadTacho(h, 0, pCar_spec);
-        if (gAusterity_mode) {
+        if (!FEAT_COCKPIT()) {
             GetALineAndDontArgue(h, s);
         } else {
             LoadTacho(h, 1, pCar_spec);
         }
         PossibleService();
         LoadGear(h, 0, pCar_spec);
-        if (gAusterity_mode) {
+        if (!FEAT_COCKPIT()) {
             GetALineAndDontArgue(h, s);
         } else {
             LoadGear(h, 1, pCar_spec);
@@ -2062,7 +2062,7 @@ void LoadCar(char* pCar_name, tDriver pDriver, tCar_spec* pCar_spec, int pOwner,
             str = strtok(NULL, "\t ,/");
             sscanf(str, "%d", &pCar_spec->rhands_y[j]);
             str = strtok(NULL, "\t ,/");
-            if (!gAusterity_mode) {
+            if (FEAT_COCKPIT()) {
                 pCar_spec->rhands_images[j] = LoadPixelmap(str);
             }
             PossibleService();
@@ -2429,7 +2429,7 @@ void LoadCar(char* pCar_name, tDriver pDriver, tCar_spec* pCar_spec, int pOwner,
     AddGroovidelics(f, pOwner, pCar_spec->car_master_actor, gGroove_funk_offset, 1);
     for (i = 0; i < pCar_spec->car_actor_count; i++) {
         PossibleService();
-        if (pOwner != OPPONENT_APC_IDX && !gAusterity_mode) {
+        if (pOwner != OPPONENT_APC_IDX && FEAT_DAMAGE()) {
             ReadCrushData(f, &pCar_spec->car_model_actors[i].crush_data);
         } else {
             pCar_spec->car_model_actors[i].crush_data.softness_factor = SkipCrushData(f);

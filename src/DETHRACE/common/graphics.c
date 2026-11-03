@@ -2090,7 +2090,7 @@ void RenderAFrame(int pDepth_mask_on) {
         DepthEffectSky(gRender_screen, gDepth_buffer, gCamera, &gCamera_to_world);
         DepthEffect(gRender_screen, gDepth_buffer, gCamera, &gCamera_to_world);
         OS_N64_ProfEnd(N64_PROF_EFFECTS);
-        if (!gAusterity_mode) {
+        if (FEAT_BLENDS()) {
             ProcessTrack(gUniverse_actor, &gProgram_state.track_spec, gCamera, &gCamera_to_world, 1);
         }
         OS_N64_ProfBegin(N64_PROF_EFFECTS);
@@ -2172,7 +2172,7 @@ void RenderAFrame(int pDepth_mask_on) {
         RenderLollipops();
         DepthEffectSky(gRearview_screen, gRearview_depth_buffer, gRearview_camera, &gRearview_camera_to_world);
         DepthEffect(gRearview_screen, gRearview_depth_buffer, gRearview_camera, &gRearview_camera_to_world);
-        if (!gAusterity_mode) {
+        if (FEAT_BLENDS()) {
             ProcessTrack(gUniverse_actor, &gProgram_state.track_spec, gRearview_camera, &gRearview_camera_to_world, 1);
         }
         RenderSplashes();
