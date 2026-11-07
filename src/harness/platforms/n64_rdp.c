@@ -156,32 +156,41 @@ void N64_Rdp_PrepareBlend(float minx, float miny, float maxx, float maxy) {
     }
 }
 
+extern int OS_N64_HeapHeadroom(void);
+static void rdp_reject(int why) {
+    static int logged;
+    if (why != 5 && logged < 16) {
+        logged++;
+        fprintf(stderr, "rdp reject: scene refused (reason %d: 1=disabled/no screen 2=stride 3=offset 4=origin 5=other rect 6=surfaces alloc) heap free ~%d KB\n", why, (int)(OS_N64_HeapHeadroom() / 1024));
+    }
+}
+
 int N64_Rdp_BeginScene(void* pixels, int row_bytes, int w, int h) {
     long off;
     int ox, oy;
 
     if (!gN64_use_rdp || gN64_screen_base == NULL || gN64_screen_w != SCREEN_W || gN64_screen_h != SCREEN_H) {
-        return 0;
+        { rdp_reject(1); return 0; }
     }
     if (row_bytes != gN64_screen_stride) {
-        return 0;
+        { rdp_reject(2); return 0; }
     }
     off = (long)((uint8_t*)pixels - (uint8_t*)gN64_screen_base);
     if (off < 0 || off >= (long)gN64_screen_stride * SCREEN_H) {
-        return 0;
+        { rdp_reject(3); return 0; }
     }
     ox = (int)(off % gN64_screen_stride);
     oy = (int)(off / gN64_screen_stride);
     if (ox + w > SCREEN_W || oy + h > SCREEN_H) {
         // the scene is shifted (screen wobble): clip it to what is visible
         if (ox >= SCREEN_W || oy >= SCREEN_H) {
-            return 0;
+            { rdp_reject(4); return 0; }
         }
     }
     if (rdp_have_frame) {
         // only the first scene rectangle of a frame goes to the RDP (the rear-view mirror stays in software)
         if (ox != rdp_first_ox || oy != rdp_first_oy || w != rdp_first_w || h != rdp_first_h) {
-            return 0;
+            { rdp_reject(5); return 0; }
         }
     } else {
         rdp_first_ox = ox;
@@ -190,7 +199,7 @@ int N64_Rdp_BeginScene(void* pixels, int row_bytes, int w, int h) {
         rdp_first_h = h;
     }
     if (!rdp_alloc_surfaces()) {
-        return 0;
+        { rdp_reject(6); return 0; }
     }
     if (!rdp_attached) {
         if (rdp_snap == NULL) {
