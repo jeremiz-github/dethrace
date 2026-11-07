@@ -389,6 +389,8 @@ void N64_Rdp_SetMode(int kind) {
     OS_N64_ProfBegin(17);
     rdp_mode = kind;
     rdpq_mode_begin();
+    rdpq_mode_filter(FILTER_BILINEAR);
+    rdpq_mode_persp(true);
     switch (kind) {
     case 0:
         rdpq_mode_combiner(RDPQ_COMBINER_SHADE);
@@ -570,6 +572,16 @@ static void rdp_end_scene_real(uint8_t* pixels, int row_bytes, int w, int h) {
                 }
             }
         }
+    }
+}
+
+// Called when the 3D view is finished, before the HUD is drawn: a deferred tiny scene (shadows) must be merged now,
+// otherwise HUD text drawn afterwards at the same place as in the previous frame looks 'unchanged' against the
+// snapshot and gets covered by the RDP layer.
+void N64_Rdp_FlushDeferred(void) {
+    if (rdp_deferred) {
+        rdp_deferred = 0;
+        rdp_end_scene_real(rdp_def_pixels, rdp_def_row, rdp_def_w, rdp_def_h);
     }
 }
 

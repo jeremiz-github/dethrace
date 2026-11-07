@@ -2131,6 +2131,10 @@ void RenderAFrame(int pDepth_mask_on) {
 #endif
 
 #ifdef N64
+    if (gN64_use_rdp) {
+        extern void N64_Rdp_FlushDeferred(void);
+        N64_Rdp_FlushDeferred();
+    }
     OS_N64_ProfBegin(N64_PROF_MIRROR);
 #endif
     if (gMirror_on__graphics) {
