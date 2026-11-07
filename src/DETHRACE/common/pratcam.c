@@ -28,6 +28,39 @@ tPrat_sequence* gPratcam_sequences;
 
 // GLOBAL: CARM95 0x00536324
 tPrat_flic_spec* gPratcam_flics;
+#ifdef N64
+#include <stdlib.h>
+#include <string.h>
+#define N64_MAX_PRAT_FLICS 128
+static char* gN64_prat_paths[N64_MAX_PRAT_FLICS];
+static int gN64_prat_resident;
+
+// Makes sure the data of flic 'pIndex' is in memory; only one pratcam flic is resident at a time.
+static void N64_PratLoad(int pIndex) {
+    FILE* g;
+    tPrat_flic_spec* spec = &gPratcam_flics[pIndex];
+
+    if (spec->data != NULL) {
+        return;
+    }
+    if (gN64_prat_resident >= 0 && gPratcam_flics[gN64_prat_resident].data != NULL) {
+        BrMemFree(gPratcam_flics[gN64_prat_resident].data);
+        gPratcam_flics[gN64_prat_resident].data = NULL;
+    }
+    gN64_prat_resident = -1;
+    g = DRfopen(gN64_prat_paths[pIndex], "rb");
+    if (g == NULL) {
+        FatalError(kFatalError_OpenPratCamFlicFile_S, gN64_prat_paths[pIndex]);
+    }
+    spec->data = BrMemAllocate(spec->data_length, kMem_pratcam_flic_data);
+    if (spec->data == NULL) {
+        FatalError(kFatalError_AllocateMemoryPratCamFlicFile);
+    }
+    fread(spec->data, 1, spec->data_length, g);
+    fclose(g);
+    gN64_prat_resident = pIndex;
+}
+#endif
 
 // GLOBAL: CARM95 0x00536320
 int gCurrent_pratcam_chunk;
@@ -135,6 +168,12 @@ void LoadPratcam(char* pFolder_name) {
     str = strtok(s, "\t ,/");
     sscanf(str, "%d", &gNumber_of_prat_flics);
     gPratcam_flics = BrMemAllocate(gNumber_of_prat_flics * sizeof(tPrat_flic_spec), kMem_pratcam_flic_array);
+#ifdef N64
+    if (gNumber_of_prat_flics > N64_MAX_PRAT_FLICS) {
+        FatalError(kFatalError_AllocateMemoryPratCamFlicFile);
+    }
+    gN64_prat_resident = -1;
+#endif
     for (i = 0; i < gNumber_of_prat_flics; i++) {
         PossibleService();
         GetALineAndDontArgue(f, s);
@@ -148,12 +187,19 @@ void LoadPratcam(char* pFolder_name) {
             FatalError(kFatalError_OpenPratCamFlicFile_S, str);
         }
         gPratcam_flics[i].data_length = GetFileLength(g);
+#ifdef N64
+        // keep only the path: the flic is read from the SD card when it is played (saves ~540 KB)
+        gPratcam_flics[i].data = NULL;
+        gN64_prat_paths[i] = strdup(the_path);
+        fclose(g);
+#else
         gPratcam_flics[i].data = BrMemAllocate(gPratcam_flics[i].data_length, kMem_pratcam_flic_data);
         if (gPratcam_flics[i].data == NULL) {
             FatalError(kFatalError_AllocateMemoryPratCamFlicFile);
         }
         fread(gPratcam_flics[i].data, 1, gPratcam_flics[i].data_length, g);
         fclose(g);
+#endif
     }
     GetALineAndDontArgue(f, s);
     if (strcmp(s, "END") != 0) {
@@ -244,6 +290,9 @@ void NextPratcamChunk(void) {
             if (random_number <= 0) {
                 gCurrent_pratcam_alternative = i;
                 gPrat_flic.data_start = NULL;
+#ifdef N64
+                N64_PratLoad(current_alternative->ref);
+#endif
                 StartFlic(NULL, -1, &gPrat_flic, gPratcam_flics[current_alternative->ref].data_length,
                     (tS8*)gPratcam_flics[current_alternative->ref].data, gPrat_buffer, 0, 0, 0);
                 if (current_alternative->sound_chance == 0) {
@@ -423,7 +472,14 @@ void DisposePratcam(void) {
     BrMemFree(gPrat_buffer->pixels);
     BrPixelmapFree(gPrat_buffer);
     for (i = 0; i < gNumber_of_prat_flics; i++) {
-        BrMemFree(gPratcam_flics[i].data);
+        if (gPratcam_flics[i].data != NULL) {
+            BrMemFree(gPratcam_flics[i].data);
+            gPratcam_flics[i].data = NULL;
+        }
+#ifdef N64
+        free(gN64_prat_paths[i]);
+        gN64_prat_paths[i] = NULL;
+#endif
     }
     for (i = 0; i < gNumber_of_prat_sequences; i++) {
         for (j = 0; j < gPratcam_sequences[i].number_of_chunks; j++) {

@@ -391,6 +391,13 @@ void OS_N64_DumpMemoryByClass(void) {
         done[best] = 1;
         dr_dprintf("mem class %s: %d KB in %d blocks", gMem_names[best], gN64_mem_live[best] / 1024, gN64_mem_count[best]);
     }
+    {
+        int total = 0;
+        for (i = 0; i < 246; i++) {
+            total += gN64_mem_live[i];
+        }
+        dr_dprintf("mem classes total: %d KB (the rest of the heap is libdragon/RDP/stdio/other)", total / 1024);
+    }
 }
 #endif
 
