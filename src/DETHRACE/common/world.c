@@ -3138,6 +3138,16 @@ void LoadTrack(char* pFile_name, tTrack_spec* pTrack_spec, tRace_info* pRace_inf
     gProgram_state.default_depth_effect.type = GetALineAndInterpretCommand(f, gDepth_effect_names, 2);
     GetPairOfInts(f, &gProgram_state.default_depth_effect.start, &gProgram_state.default_depth_effect.end);
 #ifdef N64
+    {
+        // emulator test hook: a rom:/FORCEDARK file turns the race's depth effect into 'dark'
+        FILE* n64_t = fopen("rom:/FORCEDARK", "r");
+        if (n64_t != NULL) {
+            fclose(n64_t);
+            gProgram_state.default_depth_effect.type = eDepth_effect_darkness;
+        }
+    }
+#endif
+#ifdef N64
     // keep the race's own depth effect (e.g. black 'dark' depth cue): the RDP fog is fitted from its shade table,
     // and the empty background takes the fog colour
     if (0) {
