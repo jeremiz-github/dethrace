@@ -3137,7 +3137,13 @@ void LoadTrack(char* pFile_name, tTrack_spec* pTrack_spec, tRace_info* pRace_inf
 
     gProgram_state.default_depth_effect.type = GetALineAndInterpretCommand(f, gDepth_effect_names, 2);
     GetPairOfInts(f, &gProgram_state.default_depth_effect.start, &gProgram_state.default_depth_effect.end);
+#ifdef N64
+    // keep the race's own depth effect (e.g. black 'dark' depth cue): the RDP fog is fitted from its shade table,
+    // and the empty background takes the fog colour
+    if (0) {
+#else
     if (killed_sky && gProgram_state.default_depth_effect.type != eDepth_effect_fog) {
+#endif
         gProgram_state.default_depth_effect.type = eDepth_effect_fog;
         gProgram_state.default_depth_effect.start = 7;
         gProgram_state.default_depth_effect.end = 0;

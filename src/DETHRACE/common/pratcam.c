@@ -156,6 +156,10 @@ void LoadPratcam(char* pFolder_name) {
     if (!FEAT_PRATCAM()) {
         return;
     }
+#ifdef N64
+    gPratcam_on = 1;
+    gProgram_state.prat_cam_on = 1; // the boot-menu option decides whether the pratcam exists; when it does, show it
+#endif
     PathCat(folder_path, gApplication_path, gGraf_specs[gGraf_spec_index].data_dir_name);
     PathCat(folder_path, folder_path, "PRATCAM");
     PathCat(folder_path, folder_path, pFolder_name);
@@ -518,6 +522,18 @@ void DoPratcam(tU32 pThe_time) {
         y_offset = 0;
     }
 
+#ifdef N64
+    {
+        static int n64_prat_logs;
+        if (n64_prat_logs < 6) {
+            n64_prat_logs++;
+            dr_dprintf("pratcam: on %d index %d left %d top %d buf %dx%d flic data %p frames_left %d",
+                gProgram_state.prat_cam_on, gCurrent_pratcam_index, (int)gProgram_state.current_car.prat_left,
+                (int)gProgram_state.current_car.prat_top, gPrat_buffer ? gPrat_buffer->width : -1, gPrat_buffer ? gPrat_buffer->height : -1,
+                (void*)gPrat_flic.data, (int)gPrat_flic.frames_left);
+        }
+    }
+#endif
     right_hand = gProgram_state.current_car.prat_left > gBack_screen->width / 2;
     left_image = gProgram_state.current_car.prat_cam_left;
     right_image = gProgram_state.current_car.prat_cam_right;

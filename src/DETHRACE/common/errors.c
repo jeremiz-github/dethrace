@@ -222,6 +222,9 @@ void OpenDiagnostics(void) {
     }
 
     gDiagnostic_file = fopen("DIAGNOST.TXT", "w");
+    if (gDiagnostic_file == NULL) {
+        return; // read-only medium (ROM filesystem, write-protected card): no diagnostics file
+    }
 
     fputs("DIAGNOSTIC OUTPUT\n", gDiagnostic_file);
     // todo: generate a real date

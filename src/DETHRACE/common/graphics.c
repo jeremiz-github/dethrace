@@ -2082,7 +2082,14 @@ void RenderAFrame(int pDepth_mask_on) {
         N64_UpdateFog();
 #endif
         BrZbSceneRenderBegin(gUniverse_actor, gCamera, gRender_screen, gDepth_buffer);
+#ifdef N64
+        extern unsigned gN64_cnt[8];
+        unsigned c_rb0 = gN64_cnt[1], c_t0 = gN64_cnt[2], c_a0 = gN64_cnt[0];
+#endif
         PROF(N64_PROF_NONTRACK, ProcessNonTrackActors(gRender_screen, gDepth_buffer, gCamera, &gCamera_to_world, &old_camera_matrix));
+#ifdef N64
+        gN64_cnt[3] += gN64_cnt[2] - c_t0; gN64_cnt[4] += gN64_cnt[1] - c_rb0; gN64_cnt[5] += gN64_cnt[0] - c_a0;
+#endif
         PROF(N64_PROF_TRACK, ProcessTrack(gUniverse_actor, &gProgram_state.track_spec, gCamera, &gCamera_to_world, 0));
         RenderLollipops();
 

@@ -431,6 +431,84 @@ void OS_N64_FixConsoleType(void) {
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// Emulator test script: if rom:/TESTPAD.TXT exists, it replaces the controller. Lines: "<ms> <buttons> <stick_x> <stick_y>"
+// (buttons: letters U D L R S(start) A B Z l(L) r(R) c(c-up) v(c-down) <(c-left) >(c-right) or '-'); the state holds until the next line.
+// ---------------------------------------------------------------------------
+typedef struct { int ms; char btn[12]; int sx, sy; } tTestPadLine;
+static tTestPadLine gTestPad[128];
+static int gTestPadCount = -1;
+
+static void n64_testpad_load(void) {
+    FILE* f;
+    char line[96];
+    gTestPadCount = 0;
+    f = fopen("rom:/TESTPAD.TXT", "r");
+    if (f == NULL) {
+        return;
+    }
+    while (gTestPadCount < 128 && fgets(line, sizeof(line), f)) {
+        tTestPadLine* l = &gTestPad[gTestPadCount];
+        l->sx = l->sy = 0;
+        if (sscanf(line, "%d %11s %d %d", &l->ms, l->btn, &l->sx, &l->sy) >= 2) {
+            gTestPadCount++;
+        }
+    }
+    fclose(f);
+}
+
+int N64_TestPadActive(void) {
+    if (gTestPadCount < 0) {
+        n64_testpad_load();
+    }
+    return gTestPadCount > 0;
+}
+
+void N64_TestPad(joypad_inputs_t* in) {
+    int i, cur = -1;
+    static int base = -1;
+    int now;
+    const char* b;
+
+    if (!N64_TestPadActive()) {
+        return;
+    }
+    if (base < 0) {
+        base = (int)get_ticks_ms();
+    }
+    now = (int)get_ticks_ms() - base;
+    for (i = 0; i < gTestPadCount; i++) {
+        if (gTestPad[i].ms <= now) {
+            cur = i;
+        }
+    }
+    memset(in, 0, sizeof(*in));
+    if (cur < 0) {
+        return;
+    }
+    in->stick_x = (int8_t)gTestPad[cur].sx;
+    in->stick_y = (int8_t)gTestPad[cur].sy;
+    for (b = gTestPad[cur].btn; *b; b++) {
+        switch (*b) {
+        case 'U': in->btn.d_up = 1; break;
+        case 'D': in->btn.d_down = 1; break;
+        case 'L': in->btn.d_left = 1; break;
+        case 'R': in->btn.d_right = 1; break;
+        case 'S': in->btn.start = 1; break;
+        case 'A': in->btn.a = 1; break;
+        case 'B': in->btn.b = 1; break;
+        case 'Z': in->btn.z = 1; break;
+        case 'l': in->btn.l = 1; break;
+        case 'r': in->btn.r = 1; break;
+        case 'c': in->btn.c_up = 1; break;
+        case 'v': in->btn.c_down = 1; break;
+        case '<': in->btn.c_left = 1; break;
+        case '>': in->btn.c_right = 1; break;
+        }
+    }
+}
+
 // Mounts the SD card (and the ROM's own filesystem), and picks the folder containing the
 // game's DATA directory as the current directory. Shows an explanation and stops if there is none.
 void OS_N64_InitFilesystem(void) {
@@ -645,7 +723,7 @@ static const tN64_option gN64_option_defs[] = {
     { "blends", "Track transparencies", 0, 1, 0, kOffOn },
     { "spam", "Spam frittering", 0, 1, 0, kOffOn },
     { "physics", "Physics steps/frm", 1, 5, 3, NULL },
-    { "cpuprof", "CPU profiler", 0, 1, 1, kOffOn },
+    { "cpuprof2", "CPU profiler", 0, 1, 0, kOffOn },
     { "diag", "Diagnostics log", 0, 1, 1, kOffOn },
     { "renderer", "Renderer", 0, 1, 1, kRenderer },
 };
@@ -719,13 +797,14 @@ static volatile int gN64_sample_total;
 static timer_link_t* gN64_sampler_timer;
 
 // Timer interrupt: record the interrupted PC (cop0 EPC) in a small hash of 16-byte bins. Cheap enough for 500 Hz.
+static volatile int gN64_sampler_paused;
 static void n64_sampler_cb(int ovfl) {
     uint32_t pc = (uint32_t)C0_EPC();
     uint32_t key = pc >> 4;
     uint32_t h = (key * 2654435761u) >> 22; // 10 bits
     int probe;
     (void)ovfl;
-    if (!OS_N64_InRace()) {
+    if (gN64_sampler_paused || !OS_N64_InRace()) {
         return;
     }
     for (probe = 0; probe < 8; probe++) {
@@ -776,9 +855,14 @@ void OS_N64_SamplerStart(void) {
         timer_init();
         gN64_watchdog_timer = new_timer(TIMER_TICKS(1000000), TF_CONTINUOUS, n64_watchdog_cb);
     }
-    if (gN64_sampler_timer == NULL && n64_opt("cpuprof")) {
+    // the sampler only runs while racing: file reads during loading disable interrupts for long enough
+    // for a 2 ms continuous timer to trip libdragon's 'timer interrupt is stuck' assertion
+    if (gN64_sampler_timer == NULL && n64_opt("cpuprof2") && OS_N64_InRace()) {
         timer_init();
         gN64_sampler_timer = new_timer(TIMER_TICKS(2000), TF_CONTINUOUS, n64_sampler_cb);
+    } else if (gN64_sampler_timer != NULL && !OS_N64_InRace()) {
+        delete_timer(gN64_sampler_timer);
+        gN64_sampler_timer = NULL;
     }
 }
 
@@ -807,9 +891,13 @@ static void n64_sampler_frame(void* arg, backtrace_frame_t* f) {
 
 void OS_N64_SamplerReport(void (*print)(const char* fmt, ...)) {
     int n = gN64_sample_total, i, j, shown;
-    if (n < 500) { // report about every second of racing at 500 Hz
+    if (n < 2500) { // report about every 5 s of racing at 500 Hz
+        if (gN64_sampler_timer != NULL) {
+            print("sampler: collecting (%d samples)", n);
+        }
         return;
     }
+    gN64_sampler_paused = 1; // symbolizing takes seconds: do not sample the symbolizer itself
     gN64_sampler_tab_n = 0;
     for (i = 0; i < N64_BINS; i++) {
         if (gN64_bin_count[i]) {
@@ -819,7 +907,11 @@ void OS_N64_SamplerReport(void (*print)(const char* fmt, ...)) {
             gN64_bin_count[i] = 0;
         }
     }
+    for (i = 0; i < N64_BINS; i++) {
+        gN64_bin_count[i] = 0;
+    }
     gN64_sample_total = 0;
+    gN64_sampler_paused = 0;
     for (shown = 0; shown < 44; shown++) {
         int best = -1;
         for (j = 0; j < gN64_sampler_tab_n; j++) {
@@ -865,6 +957,19 @@ void OS_N64_BootMenu(char* args, size_t size) {
 
         joypad_poll();
         joypad_buttons_t pr = joypad_get_buttons_pressed(JOYPAD_PORT_1);
+        if (N64_TestPadActive()) {
+            static joypad_buttons_t prev;
+            joypad_inputs_t ti;
+            N64_TestPad(&ti);
+            memset(&pr, 0, sizeof(pr));
+            pr.d_up = ti.btn.d_up & ~prev.d_up;
+            pr.d_down = ti.btn.d_down & ~prev.d_down;
+            pr.d_left = ti.btn.d_left & ~prev.d_left;
+            pr.d_right = ti.btn.d_right & ~prev.d_right;
+            pr.a = ti.btn.a & ~prev.a;
+            pr.start = ti.btn.start & ~prev.start;
+            prev = ti.btn;
+        }
         if (pr.d_up) {
             sel = (sel + N64_OPTION_COUNT - 1) % N64_OPTION_COUNT;
         } else if (pr.d_down) {

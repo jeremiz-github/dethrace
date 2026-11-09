@@ -18,6 +18,7 @@ extern volatile int gN64_fpu_fixups;
 #include <malloc.h>
 #include <stdio.h>
 #include <string.h>
+unsigned gN64_cnt[8];
 
 extern void QuitGame(void);
 
@@ -90,9 +91,11 @@ static unsigned gPad_buttons;
 extern int OS_N64_InRace(void);
 extern int gJoy_array[8];
 
+extern void N64_TestPad(joypad_inputs_t* in);
 static void N64_Harness_ProcessWindowMessages(void) {
     joypad_poll();
     joypad_inputs_t in = joypad_get_inputs(JOYPAD_PORT_1);
+    N64_TestPad(&in);
     joypad_buttons_t b = in.btn;
 
     gPad_stick_x = in.stick_x;
@@ -341,6 +344,8 @@ static void n64_report_stats(void) {
                 (int)(gN64_prof_ticks[10] * ms_per_tick), (int)(gN64_prof_ticks[11] * ms_per_tick),
                 (int)(gN64_prof_ticks[12] * ms_per_tick), (int)(gN64_prof_ticks[13] * ms_per_tick),
                 (int)(gN64_prof_ticks[14] * ms_per_tick), (int)(gN64_prof_ticks[15] * ms_per_tick));
+            dr_dprintf("counts/frame: actors %u renderBegin %u rdptris %u | nontrack: actors %u renderBegin %u tris %u", gN64_cnt[0] / (frames ? frames : 1), gN64_cnt[1] / (frames ? frames : 1), gN64_cnt[2] / (frames ? frames : 1), gN64_cnt[5] / (frames ? frames : 1), gN64_cnt[4] / (frames ? frames : 1), gN64_cnt[3] / (frames ? frames : 1));
+            memset(gN64_cnt, 0, sizeof(gN64_cnt));
             dr_dprintf("prof3 ms/frame: rdpq-call %d setmode %d fillvert %d",
                 (int)(gN64_prof_ticks[16] * ms_per_tick), (int)(gN64_prof_ticks[17] * ms_per_tick),
                 (int)(gN64_prof_ticks[18] * ms_per_tick));

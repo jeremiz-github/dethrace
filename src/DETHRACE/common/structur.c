@@ -700,10 +700,16 @@ void InitialiseProgramState(void) {
     gProgram_state.dont_save_or_load = 0;
     gProgram_state.dont_load = 0;
     gProgram_state.mirror_on = gMirror_on__structur;
-    if (gAusterity_mode) {
+    if (gAusterity_mode && !FEAT_PRATCAM()) {
         gPratcam_on = 0;
         gProgram_state.prat_cam_on = gPratcam_on;
     } else {
+#ifdef N64
+        // the 'pratcam off' flag may have been saved while the option was disabled: the boot-menu option decides
+        if (FEAT_PRATCAM()) {
+            gPratcam_on = 1;
+        }
+#endif
         gProgram_state.prat_cam_on = gPratcam_on;
     }
     gProgram_state.cockpit_on = gCockpit_on;
