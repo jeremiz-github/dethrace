@@ -314,7 +314,9 @@ static void n64_sd_diagnostics(void) {
 // so decide from the hardware instead (iQue: MI version 0xB_). Must run before any debug_init_*().
 void OS_N64_InitDebugLogs(void) {
     debug_init_emulog();
+#ifndef N64_EMU
     debug_init_usblog();
+#endif
 }
 
 // The VR4300 raises an "unimplemented operation" exception when a float -> integer conversion overflows (or
@@ -511,11 +513,23 @@ void N64_TestPad(joypad_inputs_t* in) {
 
 // Mounts the SD card (and the ROM's own filesystem), and picks the folder containing the
 // game's DATA directory as the current directory. Shows an explanation and stops if there is none.
+int gN64_view_indent; // 0 = full 3D view; each step shrinks the view by 2/18 of the screen width and height
+
 void OS_N64_InitFilesystem(void) {
     static const char* const kRomRoot[] = { "rom:/" };
     int have_sd;
 
     dfs_init(DFS_DEFAULT_LOCATION); // optional: only used as a fallback data location
+#ifdef N64_EMU
+    // emulator test build: no SD card, data comes from the ROM filesystem
+    {
+        FILE* vf = fopen("rom:/INDENT.TXT", "r");
+        if (vf) { fscanf(vf, "%d", &gN64_view_indent); fclose(vf); }
+    }
+    if (n64_find_data_root(kRomRoot, 1)) {
+        return;
+    }
+#endif
     // debug_init_sdfs() calls cart_init() once and remembers a failure forever. On the SummerCart64 that
     // first call fails (after the USB debug init), while later ones succeed: warm it up ourselves first.
     for (gN64_warm_tries = 1; gN64_warm_tries <= 120; gN64_warm_tries++) {
@@ -1069,3 +1083,13 @@ void debugf_n64_line(const char* fmt, va_list ap) {
     vsnprintf(line, sizeof(line), fmt, ap);
     fprintf(stderr, "[%6u ms] %s\n", (unsigned)(get_ticks_ms()), line);
 }
+
+#ifdef N64_EMU
+// Emulator-only (cen64 has no MI repeat mode): replace libdragon's hardware memset by CPU loops.
+// Linked with -Wl,--wrap=sys_hw_memset{,16,32,64} (see tools/emu-run.sh).
+#include <string.h>
+void* __wrap_sys_hw_memset(void* p, uint8_t v, size_t n) { memset(p, v, n); data_cache_hit_writeback_invalidate(p, n); return p; }
+void* __wrap_sys_hw_memset16(void* p, uint16_t v, size_t n) { uint16_t* q = p; for (size_t i = 0; i < n / 2; i++) q[i] = v; data_cache_hit_writeback_invalidate(p, n); return p; }
+void* __wrap_sys_hw_memset32(void* p, uint32_t v, size_t n) { uint32_t* q = p; for (size_t i = 0; i < n / 4; i++) q[i] = v; data_cache_hit_writeback_invalidate(p, n); return p; }
+void* __wrap_sys_hw_memset64(void* p, uint64_t v, size_t n) { uint64_t* q = p; for (size_t i = 0; i < n / 8; i++) q[i] = v; data_cache_hit_writeback_invalidate(p, n); return p; }
+#endif

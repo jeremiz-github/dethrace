@@ -282,10 +282,21 @@ void ReinitialiseRenderStuff(void) {
 #endif
         x_diff = gGraf_specs[gGraf_spec_index].total_width / 18 & ~3;
         y_diff = gGraf_specs[gGraf_spec_index].total_height / 18 & ~1;
+#ifdef N64
+        {
+            extern int gN64_view_indent; // extra border (in screen-size steps) to render a smaller 3D view
+            int ind = gRender_indent + gN64_view_indent;
+            gProgram_state.current_render_left = ind * x_diff;
+            gProgram_state.current_render_top = ind * y_diff;
+            gProgram_state.current_render_right = gGraf_specs[gGraf_spec_index].total_width - ind * x_diff;
+            gProgram_state.current_render_bottom = gGraf_specs[gGraf_spec_index].total_height - ind * y_diff;
+        }
+#else
         gProgram_state.current_render_left = gRender_indent * x_diff;
         gProgram_state.current_render_top = gRender_indent * y_diff;
         gProgram_state.current_render_right = gGraf_specs[gGraf_spec_index].total_width - gRender_indent * x_diff;
         gProgram_state.current_render_bottom = gGraf_specs[gGraf_spec_index].total_height - gRender_indent * y_diff;
+#endif
     }
 }
 

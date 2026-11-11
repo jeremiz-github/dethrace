@@ -3056,6 +3056,34 @@ void LoadInPedestrians(FILE* pF, int pSubs_count, tPed_subs* pSubs_array) {
                 break;
             }
         }
+#ifdef N64
+        {
+            // Every pedestrian type costs sprite memory (~hundreds of KB for all frames), and a track can reference
+            // dozens of types: keep at most N64_PED_TYPE_CAP distinct types, spread the others over those.
+            enum { N64_PED_TYPE_CAP = 9 };
+            static int n64_types[N64_PED_TYPE_CAP], n64_type_count, n64_next;
+            int t, found = 0;
+            if (i == 0) {
+                n64_type_count = 0;
+                n64_next = 0;
+            }
+            if (ref_number != FLAG_WAVING_BASTARD_REF) {
+                for (t = 0; t < n64_type_count; t++) {
+                    if (n64_types[t] == ref_number) {
+                        found = 1;
+                        break;
+                    }
+                }
+                if (!found) {
+                    if (n64_type_count < N64_PED_TYPE_CAP) {
+                        n64_types[n64_type_count++] = ref_number;
+                    } else {
+                        ref_number = n64_types[n64_next++ % N64_PED_TYPE_CAP];
+                    }
+                }
+            }
+        }
+#endif
         instruc_count = GetAnInt(pF);
         init_instruc = GetAnInt(pF) - 1;
         instructions = BrMemAllocate(sizeof(tPedestrian_instruction) * instruc_count, kMem_ped_instructions);

@@ -94,6 +94,11 @@ static int rdp_alloc_surfaces(void) {
     return 1;
 }
 
+// Reserve the colour/Z surfaces at start-up, while the heap is still unfragmented (a race's data fills it later).
+int N64_Rdp_Preallocate(void) {
+    return rdp_alloc_surfaces();
+}
+
 static void rdp_base_mode(void) {
     rdpq_set_mode_standard();
     rdpq_mode_zbuf(true, true);

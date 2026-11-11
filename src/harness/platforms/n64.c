@@ -292,6 +292,10 @@ static void N64_Harness_CreateWindow(const char* title, int width, int height, t
     joypad_init();
     if (gN64_use_rdp) {
         rdpq_init();
+        {
+            extern int N64_Rdp_Preallocate(void);
+            N64_Rdp_Preallocate();
+        }
     }
     video_ready = 1;
 }
