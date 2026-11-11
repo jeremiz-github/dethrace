@@ -1093,3 +1093,23 @@ void* __wrap_sys_hw_memset16(void* p, uint16_t v, size_t n) { uint16_t* q = p; f
 void* __wrap_sys_hw_memset32(void* p, uint32_t v, size_t n) { uint32_t* q = p; for (size_t i = 0; i < n / 4; i++) q[i] = v; data_cache_hit_writeback_invalidate(p, n); return p; }
 void* __wrap_sys_hw_memset64(void* p, uint64_t v, size_t n) { uint64_t* q = p; for (size_t i = 0; i < n / 8; i++) q[i] = v; data_cache_hit_writeback_invalidate(p, n); return p; }
 #endif
+
+// Fast floor()/floorf(): libm's versions cost ~100+ cycles each and run thousands of times per frame (triangle
+// setup, texture-coordinate wrapping, physics). Same results for every finite value that fits an integer
+// (zero keeps its sign); everything else falls through to the real implementation.
+extern float __real_floorf(float);
+extern double __real_floor(double);
+float __wrap_floorf(float x) {
+    if (x > -1073741824.0f && x < 1073741824.0f && x != 0.0f) {
+        int i = (int)x;
+        return (float)(i - (x < (float)i));
+    }
+    return __real_floorf(x);
+}
+double __wrap_floor(double x) {
+    if (x > -4611686018427387904.0 && x < 4611686018427387904.0 && x != 0.0) {
+        long long i = (long long)x;
+        return (double)(i - (x < (double)i));
+    }
+    return __real_floor(x);
+}

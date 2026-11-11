@@ -24,6 +24,8 @@ typedef struct tN64_sample {
     int playing;
 } tN64_sample;
 
+#define N64_MAX_PITCH_HZ 44100.0f
+static float clamp_pitch(float f) { return f > N64_MAX_PITCH_HZ ? N64_MAX_PITCH_HZ : (f < 100.0f ? 100.0f : f); }
 static int audio_ready;
 static tN64_sample* owner[N64_MIX_CHANNELS];
 
@@ -58,6 +60,9 @@ tAudioBackend_error_code AudioBackend_Init(void) {
     audio_init(N64_MIX_FREQ, AUDIO_INIT_LATENCY_MS(200));
     mixer_init(N64_MIX_CHANNELS);
     mixer_set_vol(1.0f);
+    for (int i = 0; i < N64_MIX_CHANNELS; i++) {
+        mixer_ch_set_limits(i, 16, N64_MAX_PITCH_HZ, 0); // engine/pitch effects go above the output rate: the default limit asserts
+    }
     audio_set_buffer_callback(fill_cb);
     audio_ready = 1;
     fprintf(stderr, "audio: libdragon mixer ready, %d channels at %d Hz\n", N64_MIX_CHANNELS, N64_MIX_FREQ);
@@ -101,7 +106,7 @@ static void apply_params(tN64_sample* s) {
     if (pan > 1.0f) pan = 1.0f;
     mixer_ch_set_vol_pan(s->ch, vol, pan);
     if (s->init_new_rate > 0) {
-        mixer_ch_set_freq(s->ch, (float)s->init_new_rate);
+        mixer_ch_set_freq(s->ch, clamp_pitch((float)s->init_new_rate));
     }
 }
 
@@ -135,7 +140,7 @@ tAudioBackend_error_code AudioBackend_PlaySample(void* type_struct_sample, int c
     s->wave.name = "dethrace";
     s->wave.bits = 8;
     s->wave.channels = 1;
-    s->wave.frequency = (float)rate;
+    s->wave.frequency = clamp_pitch((float)rate);
     s->wave.len = size;
     s->wave.loop_len = loop ? size : 0;
     s->wave.read = sample_read;
@@ -209,7 +214,7 @@ tAudioBackend_error_code AudioBackend_SetFrequency(void* type_struct_sample, int
     }
     s->init_new_rate = new_rate;
     if (s->ch >= 0 && owner[s->ch] == s && new_rate > 0) {
-        mixer_ch_set_freq(s->ch, (float)new_rate);
+        mixer_ch_set_freq(s->ch, clamp_pitch((float)new_rate));
     }
     return eAB_success;
 }
