@@ -2987,6 +2987,11 @@ void ResetPedMaterial(void) {
 
 // IDA: void __usercall LoadInPedestrians(FILE *pF@<EAX>, int pSubs_count@<EDX>, tPed_subs *pSubs_array@<EBX>)
 // FUNCTION: CARM95 0x0045dab2
+#ifdef N64
+#define N64_PED_SLACK 0 // the 200 spare entries cost ~45 KB; nothing adds pedestrians at run time here
+#else
+#define N64_PED_SLACK 200
+#endif
 void LoadInPedestrians(FILE* pF, int pSubs_count, tPed_subs* pSubs_array) {
     tPath_name the_path;
     char s[256];
@@ -3041,7 +3046,7 @@ void LoadInPedestrians(FILE* pF, int pSubs_count, tPed_subs* pSubs_array) {
     } else {
         ped_count = temp_int;
     }
-    gPedestrian_array = BrMemAllocate(sizeof(tPedestrian_data) * (ped_count + (!FEAT_PEDS() ? 0 : 200)), kMem_ped_array_stain);
+    gPedestrian_array = BrMemAllocate(sizeof(tPedestrian_data) * (ped_count + (!FEAT_PEDS() ? 0 : N64_PED_SLACK)), kMem_ped_array_stain);
     if (PDKeyDown(KEY_CTRL_ANY) && PDKeyDown(KEY_SHIFT_ANY) && PDKeyDown(KEY_A)) {
         check_for_duplicates = 1;
         DRS3StartSound(gEffects_outlet, 3202);
@@ -3060,7 +3065,7 @@ void LoadInPedestrians(FILE* pF, int pSubs_count, tPed_subs* pSubs_array) {
         {
             // Every pedestrian type costs sprite memory (~hundreds of KB for all frames), and a track can reference
             // dozens of types: keep at most N64_PED_TYPE_CAP distinct types, spread the others over those.
-            enum { N64_PED_TYPE_CAP = 9 };
+            enum { N64_PED_TYPE_CAP = 5 };
             static int n64_types[N64_PED_TYPE_CAP], n64_type_count, n64_next;
             int t, found = 0;
             if (i == 0) {
