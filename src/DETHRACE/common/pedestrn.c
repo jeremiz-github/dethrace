@@ -144,6 +144,11 @@ int gVesuvian_corpses = 0;
 
 // GLOBAL: CARM95 0x005118e4
 br_material* gPed_material = NULL;
+#ifdef N64
+// one material per pedestrian type: the shared one is rewritten for every ped and the deferred (z-sorted) renderer
+// then draws every sprite with the last colour map
+br_material* gPed_type_material[256];
+#endif
 
 // GLOBAL: CARM95 0x005378c8
 int gPed_gib_counts[4][5];
@@ -403,6 +408,18 @@ void SetPedMaterialForRender(br_actor* pActor) {
     int changed = 0;
 
     ped = ActorToPedestrianData(pActor);
+#ifdef N64
+    {
+        static int plog;
+        if (plog < 60) {
+            plog++;
+            dr_dprintf("pedmat: ref %d cmap %p '%s' %dx%d pix %p", ped->ref_number, (void*)ped->colour_map,
+                ped->colour_map && ped->colour_map->identifier ? ped->colour_map->identifier : "?",
+                ped->colour_map ? (int)ped->colour_map->width : 0, ped->colour_map ? (int)ped->colour_map->height : 0,
+                ped->colour_map ? (void*)ped->colour_map->pixels : NULL);
+        }
+    }
+#endif
     pActor->material->colour_map = ped->colour_map;
     if (ped->flipped) {
         changed = pActor->material->map_transform.m[0][0] != 1.f;
@@ -427,6 +444,18 @@ void PedCallBack(br_actor* pActor, br_model* pModel, br_material* pMaterial, voi
     tPedestrian_data* ped;
 
     ped = ActorToPedestrianData(pActor);
+#ifdef N64
+    {
+        static int plog;
+        if (plog < 40) {
+            plog++;
+            dr_dprintf("pedcb: ref %d cmap %p '%s' %dx%d pix %p", ped->ref_number, (void*)ped->colour_map,
+                ped->colour_map && ped->colour_map->identifier ? ped->colour_map->identifier : "?",
+                ped->colour_map ? (int)ped->colour_map->width : 0, ped->colour_map ? (int)ped->colour_map->height : 0,
+                ped->colour_map ? (void*)ped->colour_map->pixels : NULL);
+        }
+    }
+#endif
     pActor->material->colour_map = ped->colour_map;
     if (ped->flipped) {
         pActor->material->map_transform.m[0][0] = 1.f;
@@ -2706,6 +2735,11 @@ void CreatePedestrian(FILE* pG, tPedestrian_instruction* pInstructions, int pIns
     the_pedestrian->actor->model = gPed_model;
     if (the_pedestrian->cloned) {
         the_pedestrian->actor->material = gPed_material;
+#ifdef N64
+        if (the_pedestrian->ref_number >= 0 && the_pedestrian->ref_number < 256 && gPed_type_material[the_pedestrian->ref_number] != NULL) {
+            the_pedestrian->actor->material = gPed_type_material[the_pedestrian->ref_number];
+        }
+#endif
     } else {
         rewind(pG);
         do {
@@ -2770,6 +2804,22 @@ void CreatePedestrian(FILE* pG, tPedestrian_instruction* pInstructions, int pIns
         }
         gPed_material->colour_map = gPedestrians_storage_space.pixelmaps[0];
         the_pedestrian->actor->material = gPed_material;
+#ifdef N64
+        if (the_pedestrian->ref_number >= 0 && the_pedestrian->ref_number < 256) {
+            br_material* tm = gPed_type_material[the_pedestrian->ref_number];
+            if (tm == NULL) {
+                tm = BrMaterialAllocate(NULL);
+                *tm = *gPed_material;
+                tm->stored = NULL;
+                tm->identifier = NULL;
+                BrMaterialAdd(tm);
+                gPed_type_material[the_pedestrian->ref_number] = tm;
+            }
+            tm->colour_map = gPedestrians_storage_space.pixelmaps[0];
+            BrMaterialUpdate(tm, BR_MATU_ALL);
+            the_pedestrian->actor->material = tm;
+        }
+#endif
         the_pedestrian->fatal_car_impact_action = GetAnInt(pG);
         the_pedestrian->non_fatal_car_impact_action = GetAnInt(pG);
         the_pedestrian->after_impact_action = GetAnInt(pG);

@@ -29,6 +29,9 @@ extern br_actor* gCurrent_ped_path_actor;
 extern int gPedestrians_on;
 extern int gVesuvian_corpses;
 extern br_material* gPed_material;
+#ifdef N64
+extern br_material* gPed_type_material[256];
+#endif
 extern int gPed_gib_counts[4][5];
 extern tPedestrian_instruction gPed_instrucs[100];
 extern tPed_gib gPed_gibs[30];

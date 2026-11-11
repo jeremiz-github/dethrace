@@ -54,7 +54,9 @@ target_sources(harness PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/version.h"
 )
 
-if(DETHRACE_SOUND_ENABLED)
+if(DETHRACE_PLATFORM_N64)
+    target_sources(harness PRIVATE audio/n64.c)
+elseif(DETHRACE_SOUND_ENABLED)
     target_sources(harness PRIVATE audio/miniaudio.c)
     target_link_libraries(harness PRIVATE miniaudio stb)
 else()

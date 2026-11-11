@@ -5,6 +5,7 @@
 
 #include "brender.h"
 #include "controls.h"
+#include "errors.h"
 #include "globvars.h"
 #include "graphics.h"
 #include "harness/trace.h"
@@ -157,10 +158,16 @@ void InitSound(void) {
             PathCat(the_path, the_path, "SOUND.TXT");
         }
         if (gSound_override) {
+#ifdef N64
+            dr_dprintf("sound: disabled by option (-nosound)");
+#endif
             gSound_enabled = 0;
             gSound_available = gSound_enabled;
         } else {
             gSound_enabled = S3Init(the_path, gAusterity_mode) == 0;
+#ifdef N64
+            dr_dprintf("sound: S3Init %s (austerity %d)", gSound_enabled ? "ok" : "FAILED", gAusterity_mode);
+#endif
             gSound_available = gSound_enabled;
         }
         S3Set3DSoundEnvironment(1.0f / WORLD_SCALE, -1.0, -1.0);

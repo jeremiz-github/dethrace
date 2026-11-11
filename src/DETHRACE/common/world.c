@@ -3265,7 +3265,8 @@ void LoadTrack(char* pFile_name, tTrack_spec* pTrack_spec, tRace_info* pRace_inf
     line_count = 0;
     if (gRace_file_version > 3) {
         ped_subs_index = GetAnInt(f);
-        if (gAusterity_mode) {
+        // N64: "-lomem" is always passed, but pedestrian variety must stay (PEDSUBS.TXT maps nearly all peds to one type)
+        if (gAusterity_mode && !FEAT_PEDS()) {
             if (ped_subs_index >= 0) {
                 PathCat(the_path, gApplication_path, "PEDSUBS.TXT");
                 g = DRfopen(the_path, "rt");

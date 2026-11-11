@@ -221,6 +221,13 @@ void FrobFog(void) {
     if (gPed_material) {
         FogAccordingToGPSCDE(gPed_material);
     }
+#ifdef N64
+    for (i = 0; i < 256; i++) {
+        if (gPed_type_material[i]) {
+            FogAccordingToGPSCDE(gPed_type_material[i]);
+        }
+    }
+#endif
 }
 
 // IDA: void __usercall InstantDepthChange(tDepth_effect_type pType@<EAX>, br_pixelmap *pSky_texture@<EDX>, int pStart@<EBX>, int pEnd@<ECX>)
