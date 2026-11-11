@@ -430,7 +430,8 @@ static void N64_Harness_Swap(br_pixelmap* back_buffer) {
     // The display buffer is uncached RDRAM: write two RGBA5551 pixels per 32-bit store
     for (y = 0; y < out_h; y++) {
         const uint8_t* src = (const uint8_t*)back_buffer->pixels + (size_t)(y * step) * back_buffer->row_bytes;
-        uint32_t* dst = (uint32_t*)((uint8_t*)disp->buffer + (size_t)(y + off_y) * disp->stride) + (off_x >> 1);
+        // write through the cached alias (uncached 32-bit stores to RDRAM stall ~30 cycles each); written back below
+        uint32_t* dst = (uint32_t*)((uint8_t*)CachedAddr(disp->buffer) + (size_t)(y + off_y) * disp->stride) + (off_x >> 1);
 
         if (step == 1 && use_rdp) {
             const uint32_t* r3d = (const uint32_t*)N64_Rdp_Row(y); // uncached: read two pixels at once
@@ -450,6 +451,7 @@ static void N64_Harness_Swap(br_pixelmap* back_buffer) {
             }
         }
     }
+    data_cache_hit_writeback_invalidate((uint8_t*)CachedAddr(disp->buffer) + (size_t)off_y * disp->stride, (size_t)out_h * disp->stride);
     display_show(disp);
     gN64_stage = 0;
     {
