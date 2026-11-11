@@ -752,7 +752,7 @@ int N64_Rdp_Smoke(uint8_t* scr, const uint8_t* shade, int row, int zs) {
     }
     smoke_rgb(c, rgb);
     {
-        float k = F->k[row], r, g, b;
+        float k = F->k[row] * 0.7f, r, g, b; // 0.7: more see-through puffs than the raw shade table fit (user feedback)
         r = rgb[0] * (1 - k) + F->T[row][0] * k + 0.5f;
         g = rgb[1] * (1 - k) + F->T[row][1] * k + 0.5f;
         b = rgb[2] * (1 - k) + F->T[row][2] * k + 0.5f;
