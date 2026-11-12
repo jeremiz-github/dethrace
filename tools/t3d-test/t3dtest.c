@@ -170,6 +170,73 @@ static void draw_t3d_shared(int n) {
     (void)tri_per_row;
 }
 
+
+// ---- depth/screen probe: what z value does the RDP z-buffer hold for Tiny3D vs rdpq_triangle? ----
+// Reads the z-buffer back on the CPU at the screen centre. Results go to the log and to probe_txt[] (shown on screen).
+#define NPROBE 12
+static char probe_txt[NPROBE][64];
+static int probe_n;
+static uint16_t read_z(surface_t* zb, int x, int y) {
+    rspq_wait();
+    data_cache_hit_invalidate(zb->buffer, zb->stride * H);
+    return ((uint16_t*)((uint8_t*)zb->buffer + y * zb->stride))[x];
+}
+static void probe_run(surface_t* zb, T3DViewport* vp, T3DMat4FP* mfp, float cam_dist) {
+    static const float rz[] = { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f };
+    static const float dist[] = { 12.0f, 30.0f, 100.0f, 300.0f, 700.0f, 990.0f };
+    T3DVertPacked* vb = malloc_uncached_aligned(16, sizeof(T3DVertPacked) * 4);
+    // rdpq_triangle with known z
+    for (int i = 0; i < 5; i++) {
+        surface_t* disp = display_get();
+        rdpq_attach(disp, zb);
+        rdpq_clear(RGBA32(0, 0, 0, 255));
+        rdpq_clear_z(0xFFFC);
+        rdpq_set_mode_standard();
+        rdpq_mode_combiner(RDPQ_COMBINER_SHADE);
+        rdpq_mode_zbuf(true, true);
+        vtx v[3] = { { 100, 60, rz[i], 1, 1, 1, 1, 0, 0, 1 }, { 220, 60, rz[i], 1, 1, 1, 1, 0, 0, 1 }, { 160, 150, rz[i], 1, 1, 1, 1, 0, 0, 1 } };
+        rdpq_triangle(&TRIFMT_ZBUF_SHADE, (float*)&v[0], (float*)&v[1], (float*)&v[2]);
+        rdpq_detach();
+        uint16_t z = read_z(zb, W / 2, H / 2);
+        fprintf(stderr, "probe rdpq z=%.2f -> zbuf 0x%04X\n", rz[i], z);
+        if (probe_n < NPROBE) snprintf(probe_txt[probe_n++], 64, "rdpq z %.2f -> %04X", rz[i], z);
+    }
+    // Tiny3D triangle at view distance d (camera looks along +z from z=-cam_dist)
+    for (int i = 0; i < 6; i++) {
+        float zw = -cam_dist + dist[i];
+        float sc = dist[i] / cam_dist;   // keep the on-screen size constant-ish
+        int16_t x0 = (int16_t)(-60 * sc), x1 = (int16_t)(60 * sc), y0 = (int16_t)(-40 * sc), y1 = (int16_t)(60 * sc);
+        int16_t* p;
+        p = t3d_vertbuffer_get_pos(vb, 0); p[0] = x0; p[1] = y0; p[2] = (int16_t)zw;
+        p = t3d_vertbuffer_get_pos(vb, 1); p[0] = x1; p[1] = y0; p[2] = (int16_t)zw;
+        p = t3d_vertbuffer_get_pos(vb, 2); p[0] = 0;  p[1] = y1; p[2] = (int16_t)zw;
+        for (int k = 0; k < 3; k++) { uint8_t* c = t3d_vertbuffer_get_rgba(vb, k); c[0] = c[1] = c[2] = c[3] = 255; }
+        surface_t* disp = display_get();
+        rdpq_attach(disp, zb);
+        rdpq_clear(RGBA32(0, 0, 0, 255));
+        rdpq_clear_z(0xFFFC);
+        t3d_frame_start();
+        t3d_viewport_attach(vp);
+        rdpq_set_mode_standard();
+        rdpq_mode_combiner(RDPQ_COMBINER_SHADE);
+        rdpq_mode_zbuf(true, true);
+        rdpq_mode_persp(true);
+        t3d_state_set_drawflags(T3D_FLAG_SHADED | T3D_FLAG_DEPTH);
+        t3d_light_set_count(0);
+        t3d_matrix_push(mfp);
+        t3d_vert_load(vb, 0, 3);
+        t3d_tri_draw(0, 1, 2);
+        t3d_tri_draw(2, 1, 0);
+        t3d_tri_sync();
+        t3d_matrix_pop(1);
+        rdpq_detach();
+        uint16_t z = read_z(zb, W / 2, H / 2);
+        fprintf(stderr, "probe t3d view dist %.0f (near 10 far 1000) -> zbuf 0x%04X\n", dist[i], z);
+        if (probe_n < NPROBE) snprintf(probe_txt[probe_n++], 64, "t3d d %.0f -> %04X", dist[i], z);
+    }
+    free_uncached(vb);
+}
+
 int main(void) {
     debug_init_emulog();
     fprintf(stderr, "t3dtest: boot\n");
@@ -202,6 +269,7 @@ int main(void) {
     rdpq_font_t* font = rdpq_font_load_builtin(FONT_BUILTIN_DEBUG_MONO);
     rdpq_text_register_font(1, font);
 
+    probe_run(&zb, &vp, mfp, cam_dist);
     bool bilinear = true;
     int method = 0, stress_idx = 3;
     const int stress[] = { 0, 250, 500, 1000, 2000 };
@@ -244,6 +312,8 @@ int main(void) {
         rdpq_set_mode_standard();
         rdpq_text_printf(&(rdpq_textparms_t){ .style_id = 0 }, 1, 8, 20, "m%d tris %d %s  %.1f ms (cpu %.1f)  %.1f fps",
                          method, n, bilinear ? "bil" : "pt", ms, cpu_ms, fps);
+        for (int q = 0; q < probe_n; q++)
+            rdpq_text_printf(&(rdpq_textparms_t){ .style_id = 0 }, 1, 8, 40 + q * 10, "%s", probe_txt[q]);
         rdpq_detach_show();
 
         frames++;
