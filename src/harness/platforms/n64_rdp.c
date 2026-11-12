@@ -34,6 +34,7 @@ static uint16_t rdp_tlut[256] __attribute__((aligned(8)));
 static int rdp_tlut_dirty = 1;
 static const uint16_t* rdp_tlut_cur;
 static unsigned rdp_pal_serial = 1;
+static unsigned rdp_attach_serial;
 
 // distance fog, set each frame by the game (depth.c): fog starts at depth z0 (0..1) and reaches strength k
 int gN64_fog_on;
@@ -229,6 +230,7 @@ int N64_Rdp_BeginScene(void* pixels, int row_bytes, int w, int h) {
             rdpq_attach(&rdp_color, &rdp_zbuf);
         }
         rdp_attached = 1;
+        rdp_attach_serial++;
         rdp_scene_tris0 = gN64_rdp_tris;
         bb_x0 = 100000; bb_y0 = 100000; bb_x1 = -100000; bb_y1 = -100000;
         memset(blend_tiles, 0, sizeof(blend_tiles));
@@ -277,6 +279,46 @@ int N64_Rdp_BeginScene(void* pixels, int row_bytes, int w, int h) {
     rdp_have_frame = 1;
     RDPLOG("begin scene at %d,%d size %dx%d (surfaces %p %p) tris so far %d", ox, oy, w, h, rdp_color.buffer, rdp_zbuf.buffer, gN64_rdp_tris);
     return 1;
+}
+
+// ---- bridge to the Tiny3D (RSP geometry) path in rdprend.c ----
+unsigned N64_Rdp_AttachSerial(void) {
+    return rdp_attach_serial;
+}
+// visible rectangle of the current scene (what the scissor was set to); 0 if nothing is attached
+int N64_Rdp_T3dRect(int* ox, int* oy, int* w, int* h) {
+    int x0, y0, x1, y1;
+    if (!rdp_attached) {
+        return 0;
+    }
+    x0 = rdp_ox < 0 ? 0 : rdp_ox;
+    y0 = rdp_oy < 0 ? 0 : rdp_oy;
+    x1 = rdp_ox + rdp_pix_w;
+    y1 = rdp_oy + rdp_pix_h;
+    if (x1 > SCREEN_W) x1 = SCREEN_W;
+    if (y1 > SCREEN_H) y1 = SCREEN_H;
+    *ox = rdp_ox;
+    *oy = rdp_oy;
+    *w = rdp_pix_w;
+    *h = rdp_pix_h;
+    return x1 > x0 && y1 > y0;
+}
+// Tiny3D changed the RDP/RSP state behind our back: forget cached modes/textures
+void N64_Rdp_T3dForgetState(void) {
+    rdp_mode = -1;
+    rdp_tex_ptr = NULL;
+}
+// triangles were drawn by Tiny3D over the whole scene rectangle (no per-triangle bounding box)
+void N64_Rdp_T3dCovered(int tris) {
+    int x0 = rdp_ox < 0 ? 0 : rdp_ox, y0 = rdp_oy < 0 ? 0 : rdp_oy;
+    int x1 = rdp_ox + rdp_pix_w, y1 = rdp_oy + rdp_pix_h;
+    if (x1 > SCREEN_W) x1 = SCREEN_W;
+    if (y1 > SCREEN_H) y1 = SCREEN_H;
+    if (x0 < bb_x0) bb_x0 = x0;
+    if (y0 < bb_y0) bb_y0 = y0;
+    if (x1 > bb_x1) bb_x1 = x1;
+    if (y1 > bb_y1) bb_y1 = y1;
+    gN64_rdp_tris += tris;
 }
 
 int N64_Rdp_OffsetX(void) {
