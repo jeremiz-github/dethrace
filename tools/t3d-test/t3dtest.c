@@ -12,6 +12,7 @@
 #include <math.h>
 #include <t3d/t3dmath.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <string.h>
 
 // libdragon turns debug_init_*() into `false` under NDEBUG: call the real functions
@@ -171,6 +172,29 @@ static void draw_t3d_shared(int n) {
 }
 
 
+
+static void hex8(char* o, const char* label, uint32_t v) {
+    int n = 0;
+    while (*label) o[n++] = *label++;
+    for (int sh = 28; sh >= 0; sh -= 4) o[n++] = "0123456789ABCDEF"[(v >> sh) & 15];
+    o[n] = 0;
+}
+static void show_diag(surface_t* zb, void* a_stack) {
+    char l[6][48];
+    hex8(l[0], "stack ", (uint32_t)a_stack);
+    hex8(l[1], "zb.buf ", (uint32_t)zb->buffer);
+    hex8(l[2], "zb.stride ", (uint32_t)zb->stride);
+    hex8(l[3], "tex.buf ", (uint32_t)tex.buffer);
+    hex8(l[4], "memsize ", (uint32_t)get_memory_size());
+    hex8(l[5], "brk ", (uint32_t)sbrk(0));
+    for (int f = 0; f < 240; f++) {            // ~4-5 s on screen
+        surface_t* disp = display_get();
+        rdpq_attach_clear(disp, NULL);
+        for (int q = 0; q < 6; q++)
+            rdpq_text_print(&(rdpq_textparms_t){ .style_id = 0 }, 1, 8, 20 + q * 12, l[q]);
+        rdpq_detach_show();
+    }
+}
 // ---- depth/screen probe: what z value does the RDP z-buffer hold for Tiny3D vs rdpq_triangle? ----
 // Reads the z-buffer back on the CPU at the screen centre. Results go to the log and to probe_txt[] (shown on screen).
 #define NPROBE 12
@@ -283,6 +307,7 @@ int main(void) {
     rdpq_font_t* font = rdpq_font_load_builtin(FONT_BUILTIN_DEBUG_MONO);
     rdpq_text_register_font(1, font);
 
+    { int marker; show_diag(&zb, &marker); }
     probe_run(&zb, &vp, mfp, cam_dist);
     bool bilinear = true;
     int method = 0, stress_idx = 3;
