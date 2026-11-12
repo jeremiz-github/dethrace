@@ -172,9 +172,7 @@ int main(void) {
     surface_t zb = surface_alloc(FMT_RGBA16, W, H);
     T3DViewport vp = t3d_viewport_create();
     // pixel-space orthographic projection: x 0..W, y 0..H (down), z -near..-far
-    T3DMat4 proj;
-    t3d_mat4_ortho(&proj, 0, W, H, 0, 0.1f, 110.0f);
-    t3d_viewport_set_projection_matrix(&vp, &proj);
+    t3d_viewport_set_ortho(&vp, 0, W, H, 0, 0.1f, 110.0f);
     T3DMat4FP* mfp = malloc_uncached(sizeof(T3DMat4FP));
     t3d_mat4fp_identity(mfp);
     rdpq_font_t* font = rdpq_font_load_builtin(FONT_BUILTIN_DEBUG_MONO);
