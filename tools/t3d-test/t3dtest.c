@@ -176,6 +176,19 @@ static void draw_t3d_shared(int n) {
 #define NPROBE 12
 static char probe_txt[NPROBE][64];
 static int probe_n;
+// printf-free line builder: "<label><decimal> zbuf=<hex4>"
+static void put_line(char* o, const char* label, int num, uint16_t z) {
+    int n = 0;
+    while (*label && n < 30) o[n++] = *label++;
+    char d[8]; int k = 0;
+    if (num == 0) d[k++] = '0';
+    while (num > 0 && k < 7) { d[k++] = '0' + num % 10; num /= 10; }
+    while (k > 0) o[n++] = d[--k];
+    const char* t = " zbuf=";
+    while (*t) o[n++] = *t++;
+    for (int sh = 12; sh >= 0; sh -= 4) o[n++] = "0123456789ABCDEF"[(z >> sh) & 15];
+    o[n] = 0;
+}
 static uint16_t read_z(surface_t* zb, int x, int y) {
     rspq_wait();
     data_cache_hit_invalidate(zb->buffer, zb->stride * H);
@@ -198,8 +211,7 @@ static void probe_run(surface_t* zb, T3DViewport* vp, T3DMat4FP* mfp, float cam_
         rdpq_triangle(&TRIFMT_ZBUF_SHADE, (float*)&v[0], (float*)&v[1], (float*)&v[2]);
         rdpq_detach();
         uint16_t z = read_z(zb, W / 2, H / 2);
-        fprintf(stderr, "probe rdpq z=%.2f -> zbuf 0x%04X\n", rz[i], z);
-        if (probe_n < NPROBE) snprintf(probe_txt[probe_n++], 64, "rdpq z %.2f -> %04X", rz[i], z);
+        if (probe_n < NPROBE) put_line(probe_txt[probe_n++], "rdpq z*100=", (int)(rz[i] * 100.0f + 0.5f), z);
     }
     // Tiny3D triangle at view distance d (camera looks along +z from z=-cam_dist)
     for (int i = 0; i < 6; i++) {
@@ -230,8 +242,7 @@ static void probe_run(surface_t* zb, T3DViewport* vp, T3DMat4FP* mfp, float cam_
         t3d_matrix_pop(1);
         rdpq_detach();
         uint16_t z = read_z(zb, W / 2, H / 2);
-        fprintf(stderr, "probe t3d view dist %.0f (near 10 far 1000) -> zbuf 0x%04X\n", dist[i], z);
-        if (probe_n < NPROBE) snprintf(probe_txt[probe_n++], 64, "t3d d %.0f -> %04X", dist[i], z);
+        if (probe_n < NPROBE) put_line(probe_txt[probe_n++], "t3d dist=", (int)dist[i], z);
     }
     free_uncached(vb);
     surface_free(&pc);
@@ -313,7 +324,7 @@ int main(void) {
         rdpq_text_printf(&(rdpq_textparms_t){ .style_id = 0 }, 1, 8, 20, "m%d tris %d %s  %.1f ms (cpu %.1f)  %.1f fps",
                          method, n, bilinear ? "bil" : "pt", ms, cpu_ms, fps);
         for (int q = 0; q < probe_n; q++)
-            rdpq_text_printf(&(rdpq_textparms_t){ .style_id = 0 }, 1, 8, 40 + q * 10, "%s", probe_txt[q]);
+            rdpq_text_print(&(rdpq_textparms_t){ .style_id = 0 }, 1, 8, 40 + q * 10, probe_txt[q]);
         rdpq_detach_show();
 
         frames++;
