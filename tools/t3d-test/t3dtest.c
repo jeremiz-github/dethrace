@@ -185,10 +185,10 @@ static void probe_run(surface_t* zb, T3DViewport* vp, T3DMat4FP* mfp, float cam_
     static const float rz[] = { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f };
     static const float dist[] = { 12.0f, 30.0f, 100.0f, 300.0f, 700.0f, 990.0f };
     T3DVertPacked* vb = malloc_uncached_aligned(16, sizeof(T3DVertPacked) * 4);
+    surface_t pc = surface_alloc(FMT_RGBA16, W, H);   // private colour target: display_get() without display_show() would run out of buffers
     // rdpq_triangle with known z
     for (int i = 0; i < 5; i++) {
-        surface_t* disp = display_get();
-        rdpq_attach(disp, zb);
+        rdpq_attach(&pc, zb);
         rdpq_clear(RGBA32(0, 0, 0, 255));
         rdpq_clear_z(0xFFFC);
         rdpq_set_mode_standard();
@@ -211,8 +211,7 @@ static void probe_run(surface_t* zb, T3DViewport* vp, T3DMat4FP* mfp, float cam_
         p = t3d_vertbuffer_get_pos(vb, 1); p[0] = x1; p[1] = y0; p[2] = (int16_t)zw;
         p = t3d_vertbuffer_get_pos(vb, 2); p[0] = 0;  p[1] = y1; p[2] = (int16_t)zw;
         for (int k = 0; k < 3; k++) { uint8_t* c = t3d_vertbuffer_get_rgba(vb, k); c[0] = c[1] = c[2] = c[3] = 255; }
-        surface_t* disp = display_get();
-        rdpq_attach(disp, zb);
+        rdpq_attach(&pc, zb);
         rdpq_clear(RGBA32(0, 0, 0, 255));
         rdpq_clear_z(0xFFFC);
         t3d_frame_start();
@@ -235,6 +234,7 @@ static void probe_run(surface_t* zb, T3DViewport* vp, T3DMat4FP* mfp, float cam_
         if (probe_n < NPROBE) snprintf(probe_txt[probe_n++], 64, "t3d d %.0f -> %04X", dist[i], z);
     }
     free_uncached(vb);
+    surface_free(&pc);
 }
 
 int main(void) {
