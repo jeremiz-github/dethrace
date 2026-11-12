@@ -10,6 +10,7 @@
 #include <libdragon.h>
 #include <t3d/t3d.h>
 #include <math.h>
+#include <t3d/t3dmath.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -58,13 +59,13 @@ static void make_tris(void) {
 static T3DVertPacked* vb_unshared;   // MAXT*3 vertices
 static T3DVertPacked* vb_shared;     // grid vertices
 static uint16_t* grid_idx;           // 3 per triangle
-static int grid_tris, grid_verts;
+static int grid_tris, grid_verts, quad_pair;
 #define GW 46                         // grid columns (cells)
 #define GH 24
 
 static void set_vertex(T3DVertPacked* vb, int i, float x, float y, float z, float s, float t) {
     int16_t* p = t3d_vertbuffer_get_pos(vb, i);
-    p[0] = (int16_t)x; p[1] = (int16_t)y; p[2] = (int16_t)z;
+    p[0] = (int16_t)(x - W * 0.5f); p[1] = (int16_t)(H * 0.5f - y); p[2] = (int16_t)z;
     int16_t* uv = t3d_vertbuffer_get_uv(vb, i);
     uv[0] = (int16_t)(s * 32 * 32); uv[1] = (int16_t)(t * 32 * 32);
     uint8_t* c = t3d_vertbuffer_get_rgba(vb, i);
@@ -72,17 +73,26 @@ static void set_vertex(T3DVertPacked* vb, int i, float x, float y, float z, floa
 }
 
 static void build_t3d(void) {
-    vb_unshared = malloc_uncached_aligned(16, sizeof(T3DVertPacked) * ((MAXT * 3 + 1) / 2 + 2));
+    vb_unshared = malloc_uncached_aligned(16, sizeof(T3DVertPacked) * ((MAXT * 3 + 1) / 2 + 4));
     for (int i = 0; i < MAXT; i++)
         for (int k = 0; k < 3; k++)
-            set_vertex(vb_unshared, i * 3 + k, rt[i].x[k], rt[i].y[k], -(1.0f + rt[i].z * 90.0f), rt[i].s[k] * 2, rt[i].t[k] * 2);
+            set_vertex(vb_unshared, i * 3 + k, rt[i].x[k], rt[i].y[k], (rt[i].z - 0.5f) * 40.0f, rt[i].s[k] * 2, rt[i].t[k] * 2);
+    // proof-of-life quad (4 vertices, after the random ones): bright, top-left corner, 60x40 px
+    {
+        int q = MAXT * 3 + (MAXT * 3) % 2;   // keep the quad pair-aligned
+        set_vertex(vb_unshared, q + 0, 10, 10, 0, 0, 0);
+        set_vertex(vb_unshared, q + 1, 70, 10, 0, 1, 0);
+        set_vertex(vb_unshared, q + 2, 70, 50, 0, 1, 1);
+        set_vertex(vb_unshared, q + 3, 10, 50, 0, 0, 1);
+        quad_pair = q / 2;
+    }
     // shared grid: GW x GH cells -> (GW+1)*(GH+1) verts, 2 tris per cell (~2200 tris)
     grid_verts = (GW + 1) * (GH + 1);
     grid_tris = GW * GH * 2;
     vb_shared = malloc_uncached_aligned(16, sizeof(T3DVertPacked) * (grid_verts / 2 + 2));
     for (int j = 0; j <= GH; j++)
         for (int i = 0; i <= GW; i++)
-            set_vertex(vb_shared, j * (GW + 1) + i, i * (W / (float)GW), j * (H / (float)GH), -(10.0f + ((i * 7 + j * 13) % 50)), i * 0.5f, j * 0.5f);
+            set_vertex(vb_shared, j * (GW + 1) + i, i * (W / (float)GW), j * (H / (float)GH), (float)(((i * 7 + j * 13) % 50) - 25), i * 0.5f, j * 0.5f);
     grid_idx = malloc(sizeof(uint16_t) * grid_tris * 3);
     int n = 0;
     for (int j = 0; j < GH; j++)
@@ -110,6 +120,15 @@ static void draw_rdpq(int n) {
             v[k] = (vtx){ rt[i].x[k], rt[i].y[k], rt[i].z, 0.85f, 0.85f, 0.85f, 1, rt[i].s[k] * 64, rt[i].t[k] * 64, 1.0f };
         rdpq_triangle(&TRIFMT_ZBUF_SHADE_TEX, (float*)&v[0], (float*)&v[1], (float*)&v[2]);
     }
+}
+
+static void draw_quad(void) {
+    t3d_vert_load(vb_unshared + quad_pair, 0, 4);
+    t3d_tri_draw(0, 1, 2);
+    t3d_tri_draw(2, 3, 0);
+    t3d_tri_draw(2, 1, 0);   // both windings, so culling cannot hide it
+    t3d_tri_draw(0, 3, 2);
+    t3d_tri_sync();
 }
 
 static void draw_t3d_unshared(int n) {
@@ -172,9 +191,14 @@ int main(void) {
     surface_t zb = surface_alloc(FMT_RGBA16, W, H);
     T3DViewport vp = t3d_viewport_create();
     // pixel-space orthographic projection: x 0..W, y 0..H (down), z -near..-far
-    t3d_viewport_set_ortho(&vp, 0, W, H, 0, 0.1f, 110.0f);
+    // Perspective camera looking at the z=0 plane, exactly like the Tiny3D quad example: 1 unit = 1 screen pixel there.
+    const float fov = T3D_DEG_TO_RAD(60.0f);
+    const float cam_dist = (W * 0.5f) / tanf(fov * 0.5f);   // so that the plane z=0 spans exactly W pixels
+    t3d_viewport_set_projection(&vp, fov, 10.0f, 1000.0f);
+    t3d_viewport_look_at(&vp, &(fm_vec3_t){{0, 0, -cam_dist}}, &(fm_vec3_t){{0, 0, 0}}, &(fm_vec3_t){{0, 1, 0}});
+    fm_mat4_t mf; fm_mat4_identity(&mf);
     T3DMat4FP* mfp = malloc_uncached(sizeof(T3DMat4FP));
-    t3d_mat4fp_identity(mfp);
+    t3d_mat4_to_fixed(mfp, &mf);
     rdpq_font_t* font = rdpq_font_load_builtin(FONT_BUILTIN_DEBUG_MONO);
     rdpq_text_register_font(1, font);
 
@@ -209,7 +233,9 @@ int main(void) {
                 t3d_viewport_attach(&vp);
                 setup_mode(bilinear);   // after t3d_frame_start(), which sets its own render mode
                 t3d_state_set_drawflags(T3D_FLAG_TEXTURED | T3D_FLAG_SHADED | T3D_FLAG_DEPTH);
+                t3d_light_set_count(0);
                 t3d_matrix_push(mfp);
+                draw_quad();
                 if (method == 1) draw_t3d_unshared(n); else draw_t3d_shared(n);
                 t3d_matrix_pop(1);
             }
