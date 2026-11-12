@@ -217,7 +217,7 @@ static void* g_zbuf; static int g_zstride;   // snapshot taken before any rdpq a
 static uint16_t read_z(int x, int y) {
     if (!g_zbuf) return 0xDEAD;
     rspq_wait();
-    data_cache_hit_invalidate(g_zbuf, g_zstride * H);
+    // surface_alloc() returns an UNCACHED (0xA0...) pointer here: no cache maintenance needed, and a cache op on a KSEG1 address is undefined (it trashed the stack)
     return ((volatile uint16_t*)((uint8_t*)g_zbuf + y * g_zstride))[x];
 }
 __attribute__((noinline)) static void probe_run(surface_t* zb, T3DViewport* vp, T3DMat4FP* mfp, float cam_dist) {
