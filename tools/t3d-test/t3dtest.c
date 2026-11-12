@@ -189,12 +189,15 @@ static void put_line(char* o, const char* label, int num, uint16_t z) {
     for (int sh = 12; sh >= 0; sh -= 4) o[n++] = "0123456789ABCDEF"[(z >> sh) & 15];
     o[n] = 0;
 }
-static uint16_t read_z(surface_t* zb, int x, int y) {
+static void* g_zbuf; static int g_zstride;   // snapshot taken before any rdpq attach/detach
+static uint16_t read_z(int x, int y) {
+    if (!g_zbuf) return 0xDEAD;
     rspq_wait();
-    data_cache_hit_invalidate(zb->buffer, zb->stride * H);
-    return ((uint16_t*)((uint8_t*)zb->buffer + y * zb->stride))[x];
+    data_cache_hit_invalidate(g_zbuf, g_zstride * H);
+    return ((volatile uint16_t*)((uint8_t*)g_zbuf + y * g_zstride))[x];
 }
-static void probe_run(surface_t* zb, T3DViewport* vp, T3DMat4FP* mfp, float cam_dist) {
+__attribute__((noinline)) static void probe_run(surface_t* zb, T3DViewport* vp, T3DMat4FP* mfp, float cam_dist) {
+    g_zbuf = zb->buffer; g_zstride = zb->stride;
     static const float rz[] = { 0.0f, 0.25f, 0.5f, 0.75f, 1.0f };
     static const float dist[] = { 12.0f, 30.0f, 100.0f, 300.0f, 700.0f, 990.0f };
     T3DVertPacked* vb = malloc_uncached_aligned(16, sizeof(T3DVertPacked) * 4);
@@ -210,7 +213,7 @@ static void probe_run(surface_t* zb, T3DViewport* vp, T3DMat4FP* mfp, float cam_
         vtx v[3] = { { 100, 60, rz[i], 1, 1, 1, 1, 0, 0, 1 }, { 220, 60, rz[i], 1, 1, 1, 1, 0, 0, 1 }, { 160, 150, rz[i], 1, 1, 1, 1, 0, 0, 1 } };
         rdpq_triangle(&TRIFMT_ZBUF_SHADE, (float*)&v[0], (float*)&v[1], (float*)&v[2]);
         rdpq_detach();
-        uint16_t z = read_z(zb, W / 2, H / 2);
+        uint16_t z = read_z(W / 2, H / 2);
         if (probe_n < NPROBE) put_line(probe_txt[probe_n++], "rdpq z*100=", (int)(rz[i] * 100.0f + 0.5f), z);
     }
     // Tiny3D triangle at view distance d (camera looks along +z from z=-cam_dist)
@@ -241,7 +244,7 @@ static void probe_run(surface_t* zb, T3DViewport* vp, T3DMat4FP* mfp, float cam_
         t3d_tri_sync();
         t3d_matrix_pop(1);
         rdpq_detach();
-        uint16_t z = read_z(zb, W / 2, H / 2);
+        uint16_t z = read_z(W / 2, H / 2);
         if (probe_n < NPROBE) put_line(probe_txt[probe_n++], "t3d dist=", (int)dist[i], z);
     }
     free_uncached(vb);
@@ -325,6 +328,7 @@ int main(void) {
                          method, n, bilinear ? "bil" : "pt", ms, cpu_ms, fps);
         for (int q = 0; q < probe_n; q++)
             rdpq_text_print(&(rdpq_textparms_t){ .style_id = 0 }, 1, 8, 40 + q * 10, probe_txt[q]);
+        rdpq_text_printf(&(rdpq_textparms_t){ .style_id = 0 }, 1, 8, 170, "zb %d stride %d n %d", g_zbuf != NULL, g_zstride, probe_n);
         rdpq_detach_show();
 
         frames++;
