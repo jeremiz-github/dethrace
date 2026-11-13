@@ -368,6 +368,15 @@ static void n64_report_stats(void) {
             dr_dprintf("prof4 ms/frame: mirror %d | loop-start..palette %d | after-render %d | whole loop iteration %d",
                 (int)(gN64_prof_ticks[19] * ms_per_tick), (int)(gN64_prof_ticks[20] * ms_per_tick),
                 (int)(gN64_prof_ticks[22] * ms_per_tick), (int)(gN64_prof_ticks[21] * ms_per_tick));
+            {
+                extern int gN64_use_t3d;
+                extern void T3dStats(int out[6]);
+                if (gN64_use_t3d) {
+                    int st[6];
+                    T3dStats(st);
+                    dr_dprintf("t3d: groups %d tris %d (per interval) | builds %d fallback(bad %d budget %d) cache %d KB", st[0], st[1], st[2], st[3], st[4], st[5]);
+                }
+            }
             memset(gN64_prof_ticks, 0, sizeof(uint32_t) * 24);
         }
         {
