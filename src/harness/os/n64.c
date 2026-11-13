@@ -740,6 +740,7 @@ static const tN64_option gN64_option_defs[] = {
     { "cpuprof2", "CPU profiler", 0, 1, 0, kOffOn },
     { "diag", "Diagnostics log", 0, 1, 1, kOffOn },
     { "renderer", "Renderer", 0, 1, 1, kRenderer },
+    { "tiny3d", "Tiny3D scenery (test)", 0, 1, 0, kOffOn },
 };
 #define N64_OPTION_COUNT ((int)(sizeof(gN64_option_defs) / sizeof(gN64_option_defs[0])))
 
@@ -1013,6 +1014,8 @@ void OS_N64_BootMenu(char* args, size_t size) {
     {
         extern int gN64_use_rdp;
         gN64_use_rdp = n64_opt("renderer");
+        extern int gN64_use_t3d;
+        gN64_use_t3d = gN64_use_rdp && n64_opt("tiny3d");
     }
     gN64_physics_steps = n64_opt("physics");
     gN64_feat_damage = n64_opt("damage");

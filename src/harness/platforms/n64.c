@@ -288,13 +288,25 @@ static void N64_Harness_CreateWindow(const char* title, int width, int height, t
     if (video_ready) {
         return;
     }
-    display_init(RESOLUTION_320x240, DEPTH_16_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
+    {
+        // Shrink the picture slightly so no edge is lost to TV overscan (50 Hz PAL and 60 Hz NTSC alike).
+        resolution_t res = RESOLUTION_320x240;
+        res.overscan_margin = 0.05f;   // VI_CRT_MARGIN
+        display_init(res, DEPTH_16_BPP, 2, GAMMA_NONE, FILTERS_RESAMPLE);
+    }
     joypad_init();
     if (gN64_use_rdp) {
         rdpq_init();
         {
             extern int N64_Rdp_Preallocate(void);
             N64_Rdp_Preallocate();
+        }
+        {
+            extern int gN64_use_t3d;
+            extern int T3dInit(void);
+            if (gN64_use_t3d && !T3dInit()) {
+                gN64_use_t3d = 0;
+            }
         }
     }
     video_ready = 1;
