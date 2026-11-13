@@ -44,6 +44,7 @@ extern br_scalar gCut_delay_2;
 extern br_scalar gCut_delay_3;
 extern br_scalar gCut_delay_4;
 extern br_scalar gYon_multiplier;
+extern br_scalar gYon_cmdline; /* -yon factor given by the user; the track file value gYon_multiplier is scaled by it */
 extern tSave_game* gPre_race_saved_game;
 extern FILE* gDiagnostic_file;
 extern br_vector3 gDisabled_vector;

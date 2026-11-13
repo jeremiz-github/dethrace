@@ -729,7 +729,10 @@ static const tN64_option gN64_option_defs[] = {
     { "sound", "Sound", 0, 1, 1, kOffOn },
     { "cutscenes", "Cutscenes (FMV)", 0, 1, 0, kOffOn },
     { "simple", "Car simplification", 0, 4, 3, NULL },
-    { "yon", "Draw distance", 0, 7, 3, kYon },
+    #ifndef N64_YON_DEF
+#define N64_YON_DEF 5 /* 0.8 */
+#endif
+    { "yon", "Draw distance", 0, 7, N64_YON_DEF, kYon },
     { "damage", "Car damage (crush)", 0, 1, 1, kOffOn },
     { "cockpit", "Cockpit view", 0, 1, 1, kOffOn },
     { "peds", "Pedestrian variety", 0, 1, 1, kOffOn },

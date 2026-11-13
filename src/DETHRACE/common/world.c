@@ -3411,6 +3411,8 @@ void LoadTrack(char* pFile_name, tTrack_spec* pTrack_spec, tRace_info* pRace_inf
     } else {
         gYon_multiplier = 1.0;
     }
+    /* the track file used to overwrite the command-line -yon factor, so it never had any effect */
+    gYon_multiplier *= gYon_cmdline;
     GetAString(f, s);
     if (strcmp(s, pFile_name) != 0) {
         FatalError(kFatalError_FileCorrupt_S, pFile_name);

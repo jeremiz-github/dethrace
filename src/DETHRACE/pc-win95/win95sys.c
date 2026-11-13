@@ -920,6 +920,7 @@ int original_main(int pArgc, char** pArgv) {
             sscanf(pArgv[i], "%f", &f);
             if (f >= 0.0 && f <= 1.0f) {
                 gYon_multiplier = f;
+                gYon_cmdline = f;
             }
         } else if (strcasecmp(pArgv[i], "-simple") == 0 && i < pArgc - 1) {
             i++;
