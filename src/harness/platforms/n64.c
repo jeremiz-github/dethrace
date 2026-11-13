@@ -370,11 +370,12 @@ static void n64_report_stats(void) {
                 (int)(gN64_prof_ticks[22] * ms_per_tick), (int)(gN64_prof_ticks[21] * ms_per_tick));
             {
                 extern int gN64_use_t3d;
-                extern void T3dStats(int out[6]);
+                extern void T3dStats(int out[20]);
                 if (gN64_use_t3d) {
-                    int st[6];
+                    int st[20];
                     T3dStats(st);
-                    dr_dprintf("t3d: groups %d tris %d (per interval) | builds %d fallback(bad %d budget %d) cache %d KB", st[0], st[1], st[2], st[3], st[4], st[5]);
+                    dr_dprintf("t3d: groups %d tris %d (per interval) | builds %d fallback(bad %d budget %d) cache %d KB | %d ms/frame in t3d path", st[0], st[1], st[2], st[3], st[4], st[5], (int)(gN64_prof_ticks[23] * ms_per_tick));
+                    dr_dprintf("t3d bad: uv %d matrix %d build %d | rejected before t3d: not-rdp-block %d blend/decal/mode %d bad-mesh %d flat-lit %d no-normals %d", st[6], st[7], st[8], st[9], st[10], st[11], st[12], st[13]);
                 }
             }
             memset(gN64_prof_ticks, 0, sizeof(uint32_t) * 24);

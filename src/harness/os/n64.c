@@ -724,7 +724,7 @@ static const char* const kRenderer[] = { "Software", "RDP (hardware)" };
 static const char* const kYon[] = { "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "1.0" };
 
 static const tN64_option gN64_option_defs[] = {
-    { "opponents", "Opponents", 0, 5, 5, NULL },
+    { "opponents", "Opponents", 0, 5, 4, NULL },
     { "textures", "Texture quality", 0, 3, 0, kTex },
     { "sound", "Sound", 0, 1, 1, kOffOn },
     { "cutscenes", "Cutscenes (FMV)", 0, 1, 0, kOffOn },
