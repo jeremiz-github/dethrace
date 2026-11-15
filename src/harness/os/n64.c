@@ -718,13 +718,16 @@ typedef struct {
     const char* const* labels; // optional text for each value (index = value - min)
 } tN64_option;
 
+#ifndef N64_OPP_DEF
+#define N64_OPP_DEF 4
+#endif
 static const char* const kOffOn[] = { "Off", "On" };
 static const char* const kTex[] = { "Full", "Half", "Quarter", "Half (256px only)" };
 static const char* const kRenderer[] = { "Software", "RDP (hardware)" };
 static const char* const kYon[] = { "0.3", "0.4", "0.5", "0.6", "0.7", "0.8", "0.9", "1.0" };
 
 static const tN64_option gN64_option_defs[] = {
-    { "opponents", "Opponents", 0, 5, 4, NULL },
+    { "opponents", "Opponents", 0, 5, N64_OPP_DEF, NULL },
     { "textures", "Texture quality", 0, 3, 0, kTex },
     { "sound", "Sound", 0, 1, 1, kOffOn },
     { "cutscenes", "Cutscenes (FMV)", 0, 1, 0, kOffOn },

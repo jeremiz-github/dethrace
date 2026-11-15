@@ -4420,7 +4420,11 @@ void MungeCarGraphics(tU32 pFrame_period) {
     if (gProgram_state.cockpit_on) {
         SwitchCarActor(&gProgram_state.current_car, gProgram_state.current_car.car_actor_count - 1);
     } else {
+        #ifdef N64_EXP_LOWCAR
+        SwitchCarActor(&gProgram_state.current_car, 0);
+#else
         SwitchCarActor(&gProgram_state.current_car, gProgram_state.current_car.car_actor_count - 2);
+#endif
     }
 
     the_time = PDGetTotalTime();
@@ -4597,7 +4601,12 @@ void MungeCarGraphics(tU32 pFrame_period) {
 
         if (the_car->driver != eDriver_local_human && the_car->car_model_variable) {
             distance_from_camera = Vector3DistanceSquared(&the_car->car_master_actor->t.t.translate.t, (br_vector3*)gCamera_to_world.m[3]);
+            #ifdef N64
+            /* N64: opponents drop to their low-detail model sooner (the per-group cost of BRender is huge on this CPU) */
+            distance_from_camera /= gCar_simplification_factor[gGraf_spec_index][gCar_simplification_level < 3 ? 3 : gCar_simplification_level];
+#else
             distance_from_camera /= gCar_simplification_factor[gGraf_spec_index][gCar_simplification_level * 1];
+#endif
 #ifdef DETHRACE_FIX_BUGS
 // This avoids out-of-bounds access when having lots of cars
 #define CAR_IS_IT_OR_FOX(CAR) (gIt_or_fox >= 0 && gNet_players[gIt_or_fox].car == (CAR))
@@ -4616,6 +4625,17 @@ void MungeCarGraphics(tU32 pFrame_period) {
                     break;
                 }
             }
+#ifdef N64
+            /* far LOD (index 0, ~22 faces): the four 28-face wheel models cost more than the body, hide them */
+            if (the_car->car_actor_count > 1) {
+                int w;
+                for (w = 0; w < 6; w++) {
+                    if (the_car->wheel_actors[w] != NULL) {
+                        the_car->wheel_actors[w]->render_style = (the_car->current_car_actor == 0) ? BR_RSTYLE_NONE : BR_RSTYLE_FACES;
+                    }
+                }
+            }
+#endif
         }
         if (the_car->screen_material != NULL) {
             car_x = the_car->car_master_actor->t.t.translate.t.v[0];
