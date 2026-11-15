@@ -278,10 +278,8 @@ static int N64_Harness_ShowErrorMessage(char* title, char* message) {
 }
 
 static void N64_Harness_DestroyWindow(void) {
-    if (video_ready) {
-        display_close();
-        video_ready = 0;
-    }
+    // Keep the display alive: closing and re-opening it fragments the heap and the
+    // 2 uncached framebuffers can no longer be allocated (crash at race start).
 }
 
 static void N64_Harness_CreateWindow(const char* title, int width, int height, tHarness_window_type window_type) {
@@ -381,6 +379,12 @@ static void n64_report_stats(void) {
             memset(gN64_prof_ticks, 0, sizeof(uint32_t) * 24);
         }
         {
+            extern volatile unsigned gN64_audio_cb;
+            extern volatile int gN64_audio_peak;
+            dr_dprintf("audio: callbacks %u, peak sample %d in last interval", gN64_audio_cb, gN64_audio_peak);
+            gN64_audio_peak = 0;
+        }
+        {
             // once per race: full memory breakdown by class, to guide memory optimisation
             extern int OS_N64_InRace(void);
             extern void OS_N64_DumpMemoryByClass(void);
@@ -406,8 +410,10 @@ static void n64_report_stats(void) {
     }
 }
 
+extern void N64_Audio_Poll(void);
 static void N64_Harness_Swap(br_pixelmap* back_buffer) {
     gN64_stage = 1;
+    N64_Audio_Poll();
     gN64_progress++;
     int x, y;
     int out_w, out_h;
