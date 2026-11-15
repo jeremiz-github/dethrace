@@ -719,7 +719,7 @@ typedef struct {
 } tN64_option;
 
 #ifndef N64_OPP_DEF
-#define N64_OPP_DEF 4
+#define N64_OPP_DEF 3
 #endif
 static const char* const kOffOn[] = { "Off", "On" };
 static const char* const kTex[] = { "Full", "Half", "Quarter", "Half (256px only)" };
@@ -1058,7 +1058,7 @@ void OS_N64_ProfEnd(int bucket) {
 // Approximate free heap (bytes) before malloc fails: the arena tops out around 6.2 MB on a 8 MB console.
 int OS_N64_HeapHeadroom(void) {
     struct mallinfo mi = mallinfo();
-    int ceiling = (int)get_memory_size() - 1850 * 1024 - 100 * 1024;
+    int ceiling = (int)get_memory_size() - 2140 * 1024; /* measured: the arena stops at ~6059 KB on 8 MB (OOM seen with 6038 KB in use) */
     return ceiling - mi.uordblks;
 }
 

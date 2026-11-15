@@ -118,6 +118,15 @@ tAudioBackend_error_code AudioBackend_PlaySample(void* type_struct_sample, int c
         if (fails++ < 10) fprintf(stderr, "audio: PlaySample rejected (ready %d ch %d size %d rate %d)\n", audio_ready, channels, size, rate);
         return eAB_error;
     }
+    {
+        /* the mixer allocates when a channel starts: never let a sound effect take the last bytes of the heap */
+        extern int OS_N64_HeapHeadroom(void);
+        if (OS_N64_HeapHeadroom() < 40 * 1024) {
+            static int skipped;
+            if (skipped++ < 5) fprintf(stderr, "audio: sound skipped, heap nearly full\n");
+            return eAB_error;
+        }
+    }
     if (s->ch >= 0 && owner[s->ch] == s) {
         mixer_ch_stop(s->ch);
         owner[s->ch] = NULL;
