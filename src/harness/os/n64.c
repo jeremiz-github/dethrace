@@ -1022,6 +1022,8 @@ void OS_N64_BootMenu(char* args, size_t size) {
         gN64_use_rdp = n64_opt("renderer");
         extern int gN64_use_t3d;
         gN64_use_t3d = gN64_use_rdp && n64_opt("tiny3d");
+        // Tiny3D keeps its vertex cache in the heap: leave room for it by racing against one opponent at most
+        if (gN64_use_t3d && gN64_opponent_limit > 1) gN64_opponent_limit = 1;
     }
     gN64_physics_steps = n64_opt("physics");
     gN64_feat_damage = n64_opt("damage");
