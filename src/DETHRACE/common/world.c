@@ -383,6 +383,30 @@ static void N64_FitTexture(br_pixelmap* pm) {
 
 // RDP: sprite pixelmaps (pedestrians, gibs) of any size are reduced, keeping their aspect ratio, to what
 // the RDP can use anyway (2 KB): saves several MB of RAM.
+// Original size of every shrunk sprite: game code computes the on-screen size of pedestrians from the
+// pixelmap dimensions, so it must keep seeing the sizes before shrinking (else each frame is scaled differently).
+#define N64_SPR_N 2048
+static struct { const br_pixelmap* pm; unsigned short w, h; } gN64_spr[N64_SPR_N];
+static void N64_SpriteSizeSet(const br_pixelmap* pm, int w, int h) {
+    unsigned i = (((unsigned)(uintptr_t)pm) >> 4) & (N64_SPR_N - 1);
+    int n;
+    for (n = 0; n < N64_SPR_N; n++, i = (i + 1) & (N64_SPR_N - 1)) {
+        if (gN64_spr[i].pm == NULL || gN64_spr[i].pm == pm) {
+            gN64_spr[i].pm = pm; gN64_spr[i].w = (unsigned short)w; gN64_spr[i].h = (unsigned short)h;
+            return;
+        }
+    }
+}
+void N64_SpriteSize(const br_pixelmap* pm, int* w, int* h) {
+    unsigned i = (((unsigned)(uintptr_t)pm) >> 4) & (N64_SPR_N - 1);
+    int n;
+    for (n = 0; n < N64_SPR_N; n++, i = (i + 1) & (N64_SPR_N - 1)) {
+        if (gN64_spr[i].pm == pm) { *w = gN64_spr[i].w; *h = gN64_spr[i].h; return; }
+        if (gN64_spr[i].pm == NULL) break;
+    }
+    *w = pm->width; *h = pm->height;
+}
+
 void N64_ShrinkSprite(br_pixelmap* pm) {
     int w, h, nw, nh, x, y;
     unsigned char *np, *dst;
@@ -412,6 +436,7 @@ void N64_ShrinkSprite(br_pixelmap* pm) {
             *dst++ = src[(x * w) / nw];
         }
     }
+    N64_SpriteSizeSet(pm, w, h);
     BrResFree(pm->pixels);
     pm->pixels = np;
     pm->width = nw;

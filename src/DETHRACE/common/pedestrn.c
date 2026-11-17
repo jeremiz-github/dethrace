@@ -500,8 +500,18 @@ void MungeModelSize(br_actor* pActor, br_scalar pScaling_factor) {
     br_scalar half_height;
 
     the_pix = pActor->material->colour_map;
+#ifdef N64
+    {
+        extern void N64_SpriteSize(const br_pixelmap* pm, int* w, int* h);
+        int pw, ph;
+        N64_SpriteSize(the_pix, &pw, &ph);
+        half_width = (pw / 2) * pScaling_factor * gPed_scale_factor;
+        half_height = (ph / 2) * pScaling_factor * gPed_scale_factor;
+    }
+#else
     half_width = (the_pix->width / 2) * pScaling_factor * gPed_scale_factor;
     half_height = (the_pix->height / 2) * pScaling_factor * gPed_scale_factor;
+#endif
     PedModelUpdate(pActor->model,
         -half_width, -half_height,
         -half_width, half_height,
@@ -797,11 +807,22 @@ void CalcPedWidthNHeight(tPedestrian_data* pPedestrian, br_pixelmap* pPixelmap, 
         scale_to_use = 1.0f;
     }
     reference_pixel_bastard = pPedestrian->sequences->frames[0].pixelmap;
+#ifdef N64
+    {
+        extern void N64_SpriteSize(const br_pixelmap* pm, int* w, int* h);
+        int pw, ph, rw, rh;
+        N64_SpriteSize(pPixelmap, &pw, &ph);
+        N64_SpriteSize(reference_pixel_bastard, &rw, &rh);
+        *pHeight = (float)ph / (float)rh * pPedestrian->height * scale_to_use;
+        *pWidth = (float)pw / (float)ph * *pHeight;
+    }
+#else
     *pHeight = (float)pPixelmap->height
         / (float)reference_pixel_bastard->height
         * pPedestrian->height
         * scale_to_use;
     *pWidth = (float)pPixelmap->width / (float)pPixelmap->height * *pHeight;
+#endif
 }
 
 // IDA: int __usercall PedestrianNextInstruction@<EAX>(tPedestrian_data *pPedestrian@<EAX>, float pDanger_level, int pPosition_explicitly, int pMove_pc)
@@ -2785,7 +2806,7 @@ void CreatePedestrian(FILE* pG, tPedestrian_instruction* pInstructions, int pIns
         LoadNShadeTables(&gPedestrians_storage_space, pG, 1);
         LoadNPixelmaps(&gPedestrians_storage_space, pG, 1);
 #ifdef N64
-        dr_dprintf("ped type %d: images loaded", pRef_num);
+        dr_dprintf("ped type %d: images loaded (%s)", pRef_num, gPedestrians_storage_space.pixelmaps[0] && gPedestrians_storage_space.pixelmaps[0]->identifier ? gPedestrians_storage_space.pixelmaps[0]->identifier : "?");
 #endif
         GetALineAndDontArgue(pG, s2);
         if (gPed_material == NULL) {
@@ -3066,7 +3087,7 @@ void LoadInPedestrians(FILE* pF, int pSubs_count, tPed_subs* pSubs_array) {
             // Every pedestrian type costs sprite memory (~hundreds of KB for all frames), and a track can reference
             // dozens of types: keep at most N64_PED_TYPE_CAP distinct types, spread the others over those.
             enum { N64_PED_TYPE_CAP = 5 };
-            static int n64_types[N64_PED_TYPE_CAP], n64_type_count, n64_next;
+            static int n64_types[N64_PED_TYPE_CAP], n64_uses[N64_PED_TYPE_CAP], n64_type_count, n64_next;
             int t, found = 0;
             if (i == 0) {
                 n64_type_count = 0;
@@ -3076,14 +3097,23 @@ void LoadInPedestrians(FILE* pF, int pSubs_count, tPed_subs* pSubs_array) {
                 for (t = 0; t < n64_type_count; t++) {
                     if (n64_types[t] == ref_number) {
                         found = 1;
+                        n64_uses[t]++;
                         break;
                     }
                 }
                 if (!found) {
                     if (n64_type_count < N64_PED_TYPE_CAP) {
+                        n64_uses[n64_type_count] = 1;
                         n64_types[n64_type_count++] = ref_number;
                     } else {
-                        ref_number = n64_types[n64_next++ % N64_PED_TYPE_CAP];
+                        // Specialised types (a stadium's players...) are few: give the leftovers to the most common
+                        // type so far (the ordinary passers-by) instead of spreading them over every type.
+                        int best = 0;
+                        for (t = 1; t < n64_type_count; t++) {
+                            if (n64_uses[t] > n64_uses[best]) best = t;
+                        }
+                        n64_uses[best]++;
+                        ref_number = n64_types[best];
                     }
                 }
             }
