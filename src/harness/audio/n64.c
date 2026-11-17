@@ -44,6 +44,7 @@ static uint32_t step_for(float hz) { return (uint32_t)(clamp_pitch(hz) * 65536.0
 
 volatile unsigned gN64_audio_cb;
 volatile int gN64_audio_peak;
+static volatile int beep_frames;
 
 // runs from the audio interrupt: plain CPU mixing, no RSP involved
 static void fill_cb(short* buf, size_t n) {
@@ -81,6 +82,10 @@ static void fill_cb(short* buf, size_t n) {
     }
     if (n * 2 < 1) peak = 0;
     if (peak > gN64_audio_peak) gN64_audio_peak = peak;
+    if (beep_frames > 0) {
+        beep_frames -= (int)n;
+        if (beep_frames <= 0) chans[N64_MIX_CHANNELS - 1].active = 0;
+    }
     gN64_audio_cb++;
 }
 
@@ -123,7 +128,7 @@ tAudioBackend_error_code AudioBackend_Init(void) {
         tChan* b = &chans[N64_MIX_CHANNELS - 1];
         b->data = beep_data; b->size = 50; b->pos = 0; b->step = 65536; b->vl = b->vr = 100; b->loop = 1;
         b->active = 1;
-        beep_end_ms = get_ticks_ms() + 300;
+        beep_frames = N64_MIX_FREQ / 3;
     }
     fprintf(stderr, "audio: CPU mixer ready, %d channels at %d Hz\n", N64_MIX_CHANNELS, N64_MIX_FREQ);
     return eAB_success;
