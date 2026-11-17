@@ -31,6 +31,16 @@ extern void N64_ShrinkSprite(br_pixelmap* pm);
 #include "world.h"
 #include <stdlib.h>
 #include <time.h>
+#ifdef N64
+static int n64_is_stadium(void) {
+    const char* n = gCurrent_race.name;
+    int i;
+    for (i = 0; n[i] != '\0'; i++) {
+        if ((n[i] | 32) == 'm' && (n[i + 1] | 32) == 'a' && (n[i + 2] | 32) == 'i' && (n[i + 3] | 32) == 'n') return 1;
+    }
+    return 0;
+}
+#endif
 
 #define FLAG_WAVING_BASTARD_REF 99
 #define ACTIVE_PED_DXDZ 11.f
@@ -3090,8 +3100,13 @@ void LoadInPedestrians(FILE* pF, int pSubs_count, tPed_subs* pSubs_array) {
             static int n64_types[N64_PED_TYPE_CAP], n64_uses[N64_PED_TYPE_CAP], n64_type_count, n64_next;
             int t, found = 0;
             if (i == 0) {
+                dr_dprintf("N64: peds for race '%s' (stadium %d)", gCurrent_race.name, n64_is_stadium());
                 n64_type_count = 0;
                 n64_next = 0;
+            }
+            if ((ref_number == 20 || ref_number == 21) && !n64_is_stadium()) {
+                // footballers (types 20/21) only belong in the stadium of Main Street
+                ref_number = 1;
             }
             if (ref_number != FLAG_WAVING_BASTARD_REF) {
                 for (t = 0; t < n64_type_count; t++) {
