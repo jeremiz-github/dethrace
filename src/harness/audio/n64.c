@@ -1,5 +1,5 @@
 #define LIBDRAGON_PREVIEW 1
-// libdragon mixer backend for the N64 port: 8-bit unsigned mono samples are converted to signed on the fly
+// CPU mixer backend (libdragon audio driver only; the RSP mixer stalls behind long RDP jobs and crashed) for the N64 port: 8-bit unsigned mono samples are converted to signed on the fly
 // through a waveform read callback (the sample data is owned by S3 and never modified).
 #include "harness/audio.h"
 #include <libdragon.h>
@@ -10,9 +10,9 @@
 
 #define N64_MIX_CHANNELS 12
 #define N64_MIX_FREQ 22050
+#define N64_MIX_MAXFRAMES 2048
 
 typedef struct tN64_sample {
-    waveform_t wave;
     const uint8_t* data;
     int size;
     int ch; // mixer channel, -1 when not started
@@ -20,59 +20,72 @@ typedef struct tN64_sample {
     int init_pan;
     int init_new_rate;
     int rate;
-    int has_init;
     int playing;
 } tN64_sample;
 
-#define N64_MAX_PITCH_HZ 32000.0f
-static float clamp_pitch(float f) { return f > N64_MAX_PITCH_HZ ? N64_MAX_PITCH_HZ : (f < 100.0f ? 100.0f : f); }
+typedef struct {
+    const uint8_t* data;
+    uint32_t size;
+    uint32_t pos; // 16.16
+    uint32_t step; // 16.16 per output frame
+    int vl, vr; // 0..256
+    volatile int active;
+    int loop;
+} tChan;
+
+static tChan chans[N64_MIX_CHANNELS];
 static int audio_ready;
 static tN64_sample* owner[N64_MIX_CHANNELS];
+static int32_t acc[N64_MIX_MAXFRAMES * 2];
 
-static void sample_read(void* ctx, samplebuffer_t* sbuf, int wpos, int wlen, bool seeking) {
-    tN64_sample* s = (tN64_sample*)ctx;
-    (void)seeking;
-    while (wlen > 0) {
-        int n = wlen < SAMPLEBUFFER_MARGIN_UNITS ? wlen : SAMPLEBUFFER_MARGIN_UNITS;
-        int8_t* dst = (int8_t*)samplebuffer_append(sbuf, n);
-        int i;
-        for (i = 0; i < n; i++) {
-            int p = wpos + i;
-            dst[i] = (p >= 0 && p < s->size) ? (int8_t)(s->data[p] ^ 0x80) : 0;
-        }
-        wpos += n;
-        wlen -= n;
-    }
-}
+#define N64_MAX_PITCH_HZ 44100.0f
+static float clamp_pitch(float f) { return f > N64_MAX_PITCH_HZ ? N64_MAX_PITCH_HZ : (f < 100.0f ? 100.0f : f); }
+static uint32_t step_for(float hz) { return (uint32_t)(clamp_pitch(hz) * 65536.0f / N64_MIX_FREQ); }
 
-// the mixer is filled from the audio interrupt (libdragon's recommended pattern), so frame hitches do not cut the sound
 volatile unsigned gN64_audio_cb;
 volatile int gN64_audio_peak;
+
+// runs from the audio interrupt: plain CPU mixing, no RSP involved
 static void fill_cb(short* buf, size_t n) {
+    int c, peak = 0;
     size_t i;
-    int peak = 0;
-    mixer_poll(buf, (int)n);
-    for (i = 0; i < n * 2; i += 7) {
-        int v = buf[i] < 0 ? -buf[i] : buf[i];
-        if (v > peak) peak = v;
+    if (n > N64_MIX_MAXFRAMES) n = N64_MIX_MAXFRAMES;
+    memset(acc, 0, n * 2 * sizeof(int32_t));
+    for (c = 0; c < N64_MIX_CHANNELS; c++) {
+        tChan* ch = &chans[c];
+        uint32_t pos, step, size;
+        const uint8_t* d;
+        int vl, vr;
+        if (!ch->active) continue;
+        pos = ch->pos; step = ch->step; size = ch->size; d = ch->data; vl = ch->vl; vr = ch->vr;
+        for (i = 0; i < n; i++) {
+            int smp;
+            uint32_t idx = pos >> 16;
+            if (idx >= size) {
+                if (ch->loop) { pos -= size << 16; idx = pos >> 16; if (idx >= size) { pos = 0; idx = 0; } }
+                else { ch->active = 0; break; }
+            }
+            smp = (int)d[idx] - 128;
+            acc[i * 2] += smp * vl;
+            acc[i * 2 + 1] += smp * vr;
+            pos += step;
+        }
+        ch->pos = pos;
     }
+    for (i = 0; i < n * 2; i++) {
+        int v = acc[i];
+        if (v > 32767) v = 32767;
+        if (v < -32768) v = -32768;
+        buf[i] = (short)v;
+        if (((v < 0) ? -v : v) > peak) peak = (v < 0) ? -v : v;
+    }
+    if (n * 2 < 1) peak = 0;
     if (peak > gN64_audio_peak) gN64_audio_peak = peak;
     gN64_audio_cb++;
 }
 
-// boot beep: proves the whole mixer -> AI path works independently of the game's samples
-static void beep_read(void* ctx, samplebuffer_t* sbuf, int wpos, int wlen, bool seeking) {
-    (void)ctx; (void)seeking;
-    while (wlen > 0) {
-        int n = wlen < SAMPLEBUFFER_MARGIN_UNITS ? wlen : SAMPLEBUFFER_MARGIN_UNITS;
-        int8_t* dst = (int8_t*)samplebuffer_append(sbuf, n);
-        int i;
-        for (i = 0; i < n; i++) dst[i] = (((wpos + i) / 25) & 1) ? 60 : -60; // ~440 Hz square at 22050 Hz
-        wpos += n;
-        wlen -= n;
-    }
-}
-static waveform_t beep_wave;
+static uint8_t beep_data[50];
+static unsigned long beep_end_ms;
 
 // The AI interrupt (which calls fill_cb) only fires when a queued buffer finishes: nothing runs until a first buffer is queued,
 // and the chain would stay dead if it ever stalls. Called every frame: re-prime it when no callback ran for a while.
@@ -82,6 +95,10 @@ void N64_Audio_Poll(void) {
     unsigned long now;
     if (!audio_ready) return;
     now = get_ticks_ms();
+    if (beep_end_ms && now > beep_end_ms) {
+        chans[N64_MIX_CHANNELS - 1].active = 0;
+        beep_end_ms = 0;
+    }
     if (gN64_audio_cb != last_cb) {
         last_cb = gN64_audio_cb;
         last_ms = now;
@@ -92,35 +109,29 @@ void N64_Audio_Poll(void) {
 }
 
 tAudioBackend_error_code AudioBackend_Init(void) {
+    int i;
     if (audio_ready) {
         return eAB_success;
     }
-    audio_init(N64_MIX_FREQ, AUDIO_INIT_LATENCY_MS(200));
-    mixer_init(N64_MIX_CHANNELS);
-    mixer_set_vol(1.0f);
-    for (int i = 0; i < N64_MIX_CHANNELS; i++) {
-        mixer_ch_set_limits(i, 8, N64_MAX_PITCH_HZ, 0); // engine/pitch effects go above the output rate: the default limit asserts
-    }
+    audio_init(N64_MIX_FREQ, 4);
+    memset(chans, 0, sizeof(chans));
     audio_set_buffer_callback(fill_cb);
     audio_ready = 1;
-    // prime the AI: the callback is only invoked by the 'buffer finished' interrupt, so queue the first buffer by hand
     if (audio_can_write()) audio_write_silence();
-    beep_wave.name = "beep";
-    beep_wave.bits = 8;
-    beep_wave.channels = 1;
-    beep_wave.frequency = N64_MIX_FREQ;
-    beep_wave.len = N64_MIX_FREQ / 3;
-    beep_wave.read = beep_read;
-    mixer_ch_play(N64_MIX_CHANNELS - 1, &beep_wave);
-    mixer_ch_set_vol(N64_MIX_CHANNELS - 1, 0.5f, 0.5f);
-    fprintf(stderr, "audio: libdragon mixer ready, %d channels at %d Hz\n", N64_MIX_CHANNELS, N64_MIX_FREQ);
+    for (i = 0; i < 50; i++) beep_data[i] = (i < 25) ? 188 : 68; // ~440 Hz square wave
+    {
+        tChan* b = &chans[N64_MIX_CHANNELS - 1];
+        b->data = beep_data; b->size = 50; b->pos = 0; b->step = 65536; b->vl = b->vr = 100; b->loop = 1;
+        b->active = 1;
+        beep_end_ms = get_ticks_ms() + 300;
+    }
+    fprintf(stderr, "audio: CPU mixer ready, %d channels at %d Hz\n", N64_MIX_CHANNELS, N64_MIX_FREQ);
     return eAB_success;
 }
 
 void AudioBackend_UnInit(void) {
     if (audio_ready) {
         audio_set_buffer_callback(NULL);
-        mixer_close();
         audio_close();
         audio_ready = 0;
     }
@@ -143,18 +154,21 @@ void* AudioBackend_AllocateSampleTypeStruct(void) {
 
 static void apply_params(tN64_sample* s) {
     float vol, pan;
+    tChan* c;
     if (s->ch < 0) {
         return;
     }
+    c = &chans[s->ch];
     vol = s->init_volume / 300.0f;
     if (vol > 1.0f) vol = 1.0f;
     if (vol < 0.0f) vol = 0.0f;
     pan = 0.5f + s->init_pan / 20000.0f;
     if (pan < 0.0f) pan = 0.0f;
     if (pan > 1.0f) pan = 1.0f;
-    mixer_ch_set_vol_pan(s->ch, vol, pan);
+    c->vl = (int)(vol * 110.0f * (pan < 0.5f ? 1.0f : 2.0f * (1.0f - pan)));
+    c->vr = (int)(vol * 110.0f * (pan > 0.5f ? 1.0f : 2.0f * pan));
     if (s->init_new_rate > 0) {
-        mixer_ch_set_freq(s->ch, clamp_pitch((float)s->init_new_rate));
+        c->step = step_for((float)s->init_new_rate);
     }
 }
 
@@ -166,22 +180,13 @@ tAudioBackend_error_code AudioBackend_PlaySample(void* type_struct_sample, int c
         if (fails++ < 10) fprintf(stderr, "audio: PlaySample rejected (ready %d ch %d size %d rate %d)\n", audio_ready, channels, size, rate);
         return eAB_error;
     }
-    {
-        /* the mixer allocates when a channel starts: never let a sound effect take the last bytes of the heap */
-        extern int OS_N64_HeapHeadroom(void);
-        if (OS_N64_HeapHeadroom() < 40 * 1024) {
-            static int skipped;
-            if (skipped++ < 5) fprintf(stderr, "audio: sound skipped, heap nearly full\n");
-            return eAB_error;
-        }
-    }
     if (s->ch >= 0 && owner[s->ch] == s) {
-        mixer_ch_stop(s->ch);
+        chans[s->ch].active = 0;
         owner[s->ch] = NULL;
     }
     ch = -1;
-    for (i = 0; i < N64_MIX_CHANNELS; i++) {
-        if (owner[i] == NULL || !mixer_ch_playing(i)) {
+    for (i = 0; i < N64_MIX_CHANNELS - 1; i++) {
+        if (owner[i] == NULL || !chans[i].active) {
             ch = i;
             break;
         }
@@ -193,26 +198,23 @@ tAudioBackend_error_code AudioBackend_PlaySample(void* type_struct_sample, int c
         owner[ch]->ch = -1;
         owner[ch]->playing = 0;
     }
-    memset(&s->wave, 0, sizeof(s->wave));
-    s->wave.name = "dethrace";
-    s->wave.bits = 8;
-    s->wave.channels = 1;
-    s->wave.frequency = clamp_pitch((float)rate);
-    s->wave.len = size;
-    s->wave.loop_len = loop ? size : 0;
-    s->wave.read = sample_read;
-    s->wave.ctx = s;
     s->data = (const uint8_t*)data;
     s->size = size;
     s->rate = rate;
     s->ch = ch;
     owner[ch] = s;
     if (plays++ < 10) fprintf(stderr, "audio: play ch %d size %d rate %d loop %d\n", ch, size, rate, loop);
-    mixer_ch_play(ch, &s->wave);
-    mixer_ch_set_priority(ch, MIXER_PRIORITY_SFX);
-    apply_params(s);
-    if (loop) {
-        mixer_ch_set_loop(ch, true);
+    {
+        tChan* c = &chans[ch];
+        c->active = 0;
+        c->data = s->data;
+        c->size = (uint32_t)size;
+        c->pos = 0;
+        c->step = step_for((float)rate);
+        c->loop = loop ? 1 : 0;
+        c->vl = c->vr = 128;
+        apply_params(s);
+        c->active = 1;
     }
     s->playing = 1;
     return eAB_success;
@@ -223,13 +225,13 @@ int AudioBackend_SoundIsPlaying(void* type_struct_sample) {
     if (!audio_ready || s == NULL || s->ch < 0 || owner[s->ch] != s) {
         return 0;
     }
-    return mixer_ch_playing(s->ch) ? 1 : 0;
+    return chans[s->ch].active ? 1 : 0;
 }
 
 tAudioBackend_error_code AudioBackend_StopSample(void* type_struct_sample) {
     tN64_sample* s = (tN64_sample*)type_struct_sample;
     if (audio_ready && s != NULL && s->ch >= 0 && owner[s->ch] == s) {
-        mixer_ch_stop(s->ch);
+        chans[s->ch].active = 0;
         owner[s->ch] = NULL;
     }
     if (s != NULL) {
@@ -271,7 +273,7 @@ tAudioBackend_error_code AudioBackend_SetFrequency(void* type_struct_sample, int
     }
     s->init_new_rate = new_rate;
     if (s->ch >= 0 && owner[s->ch] == s && new_rate > 0) {
-        mixer_ch_set_freq(s->ch, clamp_pitch((float)new_rate));
+        chans[s->ch].step = step_for((float)new_rate);
     }
     return eAB_success;
 }
