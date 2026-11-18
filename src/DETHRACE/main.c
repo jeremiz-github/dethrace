@@ -126,6 +126,12 @@ int main(void) {
         argv[argc++] = tok;
     }
     argv[argc] = NULL;
+    {
+        int k;
+        fprintf(stderr, "args:");
+        for (k = 1; k < argc; k++) fprintf(stderr, " %s", argv[k]);
+        fprintf(stderr, "\n");
+    }
 
     return dethrace_main(argc, argv);
 }

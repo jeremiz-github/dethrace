@@ -3438,6 +3438,9 @@ void LoadTrack(char* pFile_name, tTrack_spec* pTrack_spec, tRace_info* pRace_inf
     }
     /* the track file used to overwrite the command-line -yon factor, so it never had any effect */
     gYon_multiplier *= gYon_cmdline;
+#ifdef N64
+    dr_dprintf("N64: yon multiplier %f (cmdline %f) camera yon %f", (double)gYon_multiplier, (double)gYon_cmdline, (double)gCamera_yon);
+#endif
     GetAString(f, s);
     if (strcmp(s, pFile_name) != 0) {
         FatalError(kFatalError_FileCorrupt_S, pFile_name);

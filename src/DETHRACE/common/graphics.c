@@ -2042,6 +2042,7 @@ void RenderAFrame(int pDepth_mask_on) {
             0);
     }
     gRendering_mirror = 0;
+    OS_N64_ProfBegin(N64_PROF_MIRROR);
     DoSpecialCameraEffect(gCamera, &gCamera_to_world);
 
 #ifdef DETHRACE_3DFX_PATCH
@@ -2058,6 +2059,7 @@ void RenderAFrame(int pDepth_mask_on) {
             ExternalSky(gRender_screen, gDepth_buffer, gCamera, &gCamera_to_world);
         }
     }
+    OS_N64_ProfEnd(N64_PROF_MIRROR);
 
 #ifdef DETHRACE_3DFX_PATCH
     PDUnlockRealBackScreen(1);
