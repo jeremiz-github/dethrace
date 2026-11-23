@@ -613,6 +613,33 @@ static void rdp_end_scene_real(uint8_t* pixels, int row_bytes, int w, int h) {
             x = x0;
             if ((rdp_ox & 1) == 0) {
                 const uint32_t* s32 = (const uint32_t*)(src + x0);
+                // scalar pairs until the destination (and snapshot) are 4-byte aligned
+                for (; x + 1 < n && ((((uintptr_t)(dst + x)) & 3) || (old != NULL && (((uintptr_t)(old + x)) & 3))); x += 2) {
+                    uint32_t v = *s32++;
+                    if (v & 0x00010001u) {
+                        if ((v & 0x00010000u) && (old == NULL || dst[x] == old[x])) dst[x] = 0;
+                        if ((v & 1u) && (old == NULL || dst[x + 1] == old[x + 1])) dst[x + 1] = 0;
+                    }
+                }
+                // four pixels per step: coverage bits -> byte mask, one word compare against the snapshot
+                for (; x + 3 < n; x += 4) {
+                    uint32_t v0 = s32[0], v1 = s32[1];
+                    uint32_t cov;
+                    s32 += 2;
+                    cov = ((v0 & 0x00010000u) << 8) | ((v0 & 1u) << 16) | ((v1 & 0x00010000u) >> 8) | (v1 & 1u);
+                    if (cov) {
+                        uint32_t* d32 = (uint32_t*)(dst + x);
+                        uint32_t d = *d32;
+                        if (old == NULL || d == *(const uint32_t*)(old + x)) {
+                            *d32 = d & ~(cov * 255u);
+                        } else {
+                            if ((v0 & 0x00010000u) && dst[x] == old[x]) dst[x] = 0;
+                            if ((v0 & 1u) && dst[x + 1] == old[x + 1]) dst[x + 1] = 0;
+                            if ((v1 & 0x00010000u) && dst[x + 2] == old[x + 2]) dst[x + 2] = 0;
+                            if ((v1 & 1u) && dst[x + 3] == old[x + 3]) dst[x + 3] = 0;
+                        }
+                    }
+                }
                 for (; x + 1 < n; x += 2) {
                     uint32_t v = *s32++;
                     if (v & 0x00010001u) {
