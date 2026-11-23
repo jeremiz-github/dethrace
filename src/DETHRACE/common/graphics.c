@@ -1779,7 +1779,15 @@ void ProcessShadow(tCar_spec* pCar, br_actor* pWorld, tTrack_spec* pTrack_spec, 
 
 // IDA: void __usercall RenderShadows(br_actor *pWorld@<EAX>, tTrack_spec *pTrack_spec@<EDX>, br_actor *pCamera@<EBX>, br_matrix34 *pCamera_to_world_transform@<ECX>)
 // FUNCTION: CARM95 0x004b57b6
+#ifdef N64
+int gN64_shadows = 0; // car shadows cost ~15 ms per frame: off unless the option is enabled
+#endif
 void RenderShadows(br_actor* pWorld, tTrack_spec* pTrack_spec, br_actor* pCamera, br_matrix34* pCamera_to_world_transform) {
+#ifdef N64
+    if (!gN64_shadows) {
+        return;
+    }
+#endif
     int i;
     int cat;
     int car_count;

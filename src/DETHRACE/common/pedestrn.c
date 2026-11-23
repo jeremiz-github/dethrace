@@ -36,7 +36,8 @@ static int n64_is_stadium(void) {
     const char* n = gCurrent_race.name;
     int i;
     for (i = 0; n[i] != '\0'; i++) {
-        if ((n[i] | 32) == 'm' && (n[i + 1] | 32) == 'a' && (n[i + 2] | 32) == 'i' && (n[i + 3] | 32) == 'n') return 1;
+        // "Main Street" is called "Maim Street" in the game files
+        if ((n[i] | 32) == 'm' && (n[i + 1] | 32) == 'a' && (n[i + 2] | 32) == 'i' && ((n[i + 3] | 32) == 'n' || (n[i + 3] | 32) == 'm')) return 1;
     }
     return 0;
 }

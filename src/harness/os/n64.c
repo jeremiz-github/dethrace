@@ -747,6 +747,7 @@ static const tN64_option gN64_option_defs[] = {
     { "diag", "Diagnostics log", 0, 1, 1, kOffOn },
     { "renderer", "Renderer", 0, 1, 1, kRenderer },
     { "tiny3d", "Tiny3D scenery (test)", 0, 1, 0, kOffOn },
+    { "shadows", "Car shadows", 0, 1, 0, kOffOn },
 };
 #define N64_OPTION_COUNT ((int)(sizeof(gN64_option_defs) / sizeof(gN64_option_defs[0])))
 
@@ -1021,7 +1022,9 @@ void OS_N64_BootMenu(char* args, size_t size) {
         extern int gN64_use_rdp;
         gN64_use_rdp = n64_opt("renderer");
         extern int gN64_use_t3d;
+        extern int gN64_shadows;
         gN64_use_t3d = gN64_use_rdp && n64_opt("tiny3d");
+        gN64_shadows = n64_opt("shadows");
         // Tiny3D keeps its vertex cache in the heap: leave room for it by racing against one opponent at most
         if (gN64_use_t3d && gN64_opponent_limit > 1) gN64_opponent_limit = 1;
     }
