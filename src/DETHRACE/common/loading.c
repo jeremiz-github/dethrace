@@ -3326,7 +3326,7 @@ void LoadOpponentsCars(tRace_info* pRace_info) {
         {
             // Not enough memory for another opponent: race with the ones already loaded
             extern int OS_N64_HeapHeadroom(void);
-            if (i > 0 && OS_N64_HeapHeadroom() < 2910 * 1024) {
+            if (i > 0 && OS_N64_HeapHeadroom() < 2850 * 1024) {
                 dr_dprintf("N64: low memory (%d KB free), racing with %d opponents instead of %d",
                     OS_N64_HeapHeadroom() / 1024, i, pRace_info->number_of_racers);
                 pRace_info->number_of_racers = i;
